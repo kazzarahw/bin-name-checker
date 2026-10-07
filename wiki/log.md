@@ -32,3 +32,26 @@ Tip: `grep "^## \[" wiki/log.md | tail -5` shows the last 5 events.
 - Relaxed to `required_approving_review_count: 0`, code-owner/last-push
   approval off. Still enforced: PRs, linear history, `ci-success`, no force
   pushes, no deletion. `.github/rulesets/main.json` updated to match.
+
+## [2026-10-07] query | Binary-name check layers filed back
+
+- Filed `wiki/queries/binary-name-check.md`: why no single registry exists,
+  the four layers (local PATH, Repology aggregator, language registries,
+  forges), and the package-name != binary-name gap (`rg` vs `ripgrep`).
+- Updated `wiki/index.md` to catalog it.
+
+## [2026-10-07] progress | MVP bin-name-checker implemented
+
+- `app-core`: `BinaryName`, `NameError`, `Availability`, `Source`
+  (`LocalPath`, `Repology`, `CratesIo`, `Npm`, `Pypi`, `Github`),
+  `Outcome`, `summarize`; 7 unit tests.
+- `app-cli`: `PATH` scan + blocking HTTPS (Repology, crates.io, npm, PyPI,
+  GitHub search), human/`--json` output, exits `0`/`1`/`2`.
+- Deps: `clap`, `reqwest` (`blocking` + `native-tls`; `rustls-tls` rejected —
+  its `webpki-roots` `CDLA-Permissive-2.0` license fails `cargo deny` and
+  `deny.toml` is owner-protected), `serde`, `serde_json`.
+- Verified live: `rg` → taken (rc 1), random name → free (rc 0), bad name →
+  rc 2. Full gate green: `fmt-check`, `lint`, `t`, `test --doc`, `doc-check`,
+  `deny check`, `typos`.
+- Rewrote `wiki/overview.md`, recorded decisions in `wiki/architecture.md`,
+  updated `wiki/progress.md` + `wiki/index.md`.

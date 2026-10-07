@@ -21,7 +21,8 @@ query-filed-back, and lint fix. Read this file first when answering questions.
 ## Queries (filed-back answers)
 
 <!-- One bullet per wiki/queries/<slug>.md page. -->
-- _No filed-back answers yet._
+- [binary-name-check](queries/binary-name-check.md) — why no single binary-name
+  registry exists; the four check layers; what the MVP implements.
 
 ## Raw sources
 
