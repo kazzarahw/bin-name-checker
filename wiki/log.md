@@ -82,5 +82,9 @@ Tip: `grep "^## \[" wiki/log.md | tail -5` shows the last 5 events.
   `anstyle`, 60-char evidence cap); per-source `Evidence` (package/repo name
   + description) in table and `--json`; npm moved to `/latest` doc;
   `README.md` sample output. 17 unit tests; eval still 8/8.
+- CI triage (2026-10-07): red on `origin/main` is pre-existing — the template
+  `Initial commit` fails `clippy` under newer stable (`assert!(!x.is_empty())`
+  in the scaffold test). Local toolchain synced 1.93.1 → 1.99.0; full gate
+  re-verified green. `README.md` gained an Install section.
 - Full gate green: `fmt-check`, `lint`, `t`, `test --doc`, `doc-check`,
   `deny check`, `typos`.

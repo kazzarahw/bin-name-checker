@@ -3,6 +3,19 @@
 Check whether a candidate binary name is already taken, so you can pick unique
 names for new CLI projects.
 
+## Install
+
+Requires stable Rust (edition 2024, MSRV 1.93; `rustup` fetches the pinned
+toolchain automatically):
+
+```sh
+cargo install --path crates/bin-name-cli
+bin-name-checker <name>        # human output
+bin-name-checker <name> --json # JSON for scripting
+```
+
+Or run without installing:
+
 ```sh
 cargo run -q -p bin-name-cli -- <name>        # human output
 cargo run -q -p bin-name-cli -- <name> --json # JSON for scripting
@@ -58,7 +71,7 @@ when set.
 
 ## Development
 
-Stable Rust (edition 2024, MSRV 1.93; `rustup` fetches the pinned toolchain).
+`rustup` fetches the pinned toolchain automatically (see above).
 
 ```sh
 cargo fmt-check
