@@ -1,0 +1,51 @@
+name: Mutation Testing
+
+on:
+  pull_request:
+  schedule:
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  mutants:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # v6.0.0
+        with:
+          # Full history so the PR base commit is available for the diff.
+          fetch-depth: 0
+      - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # master
+      - uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0
+        with:
+          tool: cargo-mutants
+      - name: Run mutants (informational)
+        continue-on-error: true
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [ -z "$BASE_REF" ] || [ "$BASE_REF" = "0000000000000000000000000000000000000000" ]; then
+            echo "No base commit available (scheduled or manual run); running full suite."
+            cargo mutants --workspace --timeout 60 --output-format=github,jsonl > mutants.jsonl || true
+          else
+            if git diff --quiet "$BASE_REF"...HEAD -- '*.rs'; then
+              echo "No Rust changes in this PR; skipping mutation testing."
+            else
+              git diff "$BASE_REF"...HEAD -- '*.rs' > mutants.diff
+              cargo mutants --in-diff mutants.diff --output-format=github,jsonl > mutants.jsonl || true
+            fi
+          fi
+      - name: Upload results
+        if: always() && hashFiles('mutants.jsonl') != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.2
+        with:
+          name: mutants-results
+          path: mutants.jsonl

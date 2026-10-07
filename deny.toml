@@ -1,0 +1,24 @@
+[advisories]
+version = 2
+yanked = "deny"
+
+[licenses]
+version = 2
+allow = ["MIT", "Apache-2.0", "Apache-2.0 WITH LLVM-exception", "BSD-2-Clause", "BSD-3-Clause", "ISC", "Unicode-3.0", "Zlib", "MPL-2.0"]
+unused-allowed-license = "allow"
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# Path dependencies between this workspace's own crates are written as
+# `{ path = "..." }` with no version, which cargo-deny reads as a wildcard
+# requirement. Cargo itself resolves them correctly, and cargo-deny 0.20 cannot
+# resolve inherited `[workspace.dependencies]` path entries, so scope the
+# wildcard ban to external crates only.
+# TODO(template): rename entries here when you rename the template crates.
+skip-tree = ["app-core", "app-cli"]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

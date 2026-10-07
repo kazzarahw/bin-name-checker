@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+  RUSTDOCFLAGS: -D warnings
+
+jobs:
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # v6.0.0
+      - run: cargo fmt --all --check
+
+  clippy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # v6.0.0
+      - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # master
+      - run: cargo lint
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # v6.0.0
+      - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # master
+      - uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0
+        with:
+          tool: nextest
+      - run: cargo t
+      - run: cargo test --doc --workspace
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # v6.0.0
+      - run: cargo doc-check
+
+  deny:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # v6.0.0
+      - uses: EmbarkStudios/cargo-deny-action@9c67a826e39827395bfa619cd85cb2aaeb43cfaa # v0.1.16
+
+  typos:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # v6.0.0
+      - uses: crate-ci/typos@13d4ad9e5ad5db0958564fe6fb02b9b0f5ddb1aa # master
+
+  ci-success:
+    if: always()
+    needs: [fmt, clippy, test, docs, deny, typos]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify all checks passed
+        # NOTE: `needs.<job>.result` requires a literal job ID — a shell loop
+        # variable cannot be interpolated inside `${{ }}` (that fails workflow
+        # parsing and the whole run dies before any job starts). Keep these
+        # explicit and in sync with the `needs:` list above.
+        run: |
+          fail=0
+          test "${{ needs.fmt.result }}" = "success" || { echo "::error::fmt did not succeed (result: ${{ needs.fmt.result }})"; fail=1; }
+          test "${{ needs.clippy.result }}" = "success" || { echo "::error::clippy did not succeed (result: ${{ needs.clippy.result }})"; fail=1; }
+          test "${{ needs.test.result }}" = "success" || { echo "::error::test did not succeed (result: ${{ needs.test.result }})"; fail=1; }
+          test "${{ needs.docs.result }}" = "success" || { echo "::error::docs did not succeed (result: ${{ needs.docs.result }})"; fail=1; }
+          test "${{ needs.deny.result }}" = "success" || { echo "::error::deny did not succeed (result: ${{ needs.deny.result }})"; fail=1; }
+          test "${{ needs.typos.result }}" = "success" || { echo "::error::typos did not succeed (result: ${{ needs.typos.result }})"; fail=1; }
+          exit $fail

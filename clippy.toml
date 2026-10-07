@@ -1,0 +1,9 @@
+msrv = "1.93"
+
+# Test and bench code may use the ergonomics banned in production code. The
+# workspace lint table sets these to "deny"; these flags scope the relaxation to
+# `#[cfg(test)]` and `#[cfg(bench)]` only.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true
+allow-indexing-slicing-in-tests = true

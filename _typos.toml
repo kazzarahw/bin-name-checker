@@ -1,0 +1,16 @@
+[default.extend-words]
+# Real crate and API names that the spell checker misreads as typos.
+ratatui = "ratatui"
+schemars = "schemars"
+nextest = "nextest"
+clap = "clap"
+reqwest = "reqwest"
+tokio = "tokio"
+serde = "serde"
+
+[files]
+extend-exclude = [
+  "target/",
+  "Cargo.lock",
+  ".github/rulesets/",
+]

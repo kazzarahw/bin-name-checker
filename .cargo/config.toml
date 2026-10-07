@@ -1,0 +1,18 @@
+[alias]
+# Formatting
+# `fmt` is deliberately not aliased: it would shadow the built-in `cargo fmt`.
+fmt-check = "fmt --all -- --check"
+
+# Linting: pedantic lints warn, `all` denies, and warnings are errors.
+lint = "clippy --workspace --all-targets --all-features -- -D warnings"
+
+# Tests
+t = "nextest run --workspace --all-features"
+
+# Documentation. `doc` is deliberately not aliased: it would shadow the built-in.
+doc-check = "doc --workspace --no-deps"
+
+[env]
+# Make the documentation gate self-contained: `cargo doc` fails on rustdoc
+# warnings without this.
+RUSTDOCFLAGS = { value = "-D warnings", force = true }
