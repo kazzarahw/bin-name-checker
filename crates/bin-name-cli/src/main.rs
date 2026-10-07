@@ -87,7 +87,7 @@ fn run() -> ExitCode {
             let Some(url) = source.query_url(&name) else {
                 continue;
             };
-            outcomes.push(check_remote(&client, source, &url));
+            outcomes.push(check_remote(&client, source, &name, &url));
         }
     }
 
@@ -174,7 +174,12 @@ fn check_builtin(name: &BinaryName) -> Outcome {
 /// [`Availability::Unknown`], never a hard error. When `GITHUB_TOKEN` is set,
 /// it is sent as a bearer token on GitHub requests to raise the rate limit.
 #[must_use]
-fn check_remote(client: &reqwest::blocking::Client, source: Source, url: &str) -> Outcome {
+fn check_remote(
+    client: &reqwest::blocking::Client,
+    source: Source,
+    name: &BinaryName,
+    url: &str,
+) -> Outcome {
     let mut request = client.get(url);
     if source == Source::Github {
         request = request.header(reqwest::header::ACCEPT, "application/vnd.github+json");
@@ -210,7 +215,7 @@ fn check_remote(client: &reqwest::blocking::Client, source: Source, url: &str) -
         }
     };
     let availability = source.interpret(status, &body);
-    let evidence = source.evidence(status, &body);
+    let evidence = source.evidence(name, status, &body);
     Outcome::new(
         source,
         availability,

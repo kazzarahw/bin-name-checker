@@ -264,16 +264,18 @@ impl Source {
     ///
     /// Returns `None` unless [`interpret`](Self::interpret) says `Taken` and
     /// the body names the colliding entry. Local sources never have evidence
-    /// here; the CLI reports their hit directly.
+    /// here; the CLI reports their hit directly. For `npm`, the `bin` field
+    /// is compared against `name`, so evidence says whether the package
+    /// actually ships that binary or merely occupies the registry name.
     #[must_use]
-    pub fn evidence(self, status: u16, body: &str) -> Option<Evidence> {
+    pub fn evidence(self, name: &BinaryName, status: u16, body: &str) -> Option<Evidence> {
         if self.interpret(status, body) != Availability::Taken {
             return None;
         }
         match self {
             Self::LocalPath | Self::ShellBuiltin => None,
             Self::CratesIo => registry_evidence(body, Some("crate"), "name", "description"),
-            Self::Npm => registry_evidence(body, None, "name", "description"),
+            Self::Npm => npm_evidence(name, body),
             Self::Pypi => registry_evidence(body, Some("info"), "name", "summary"),
             Self::Rubygems => registry_evidence(body, None, "name", "info"),
             Self::Homebrew => registry_evidence(body, None, "name", "desc"),
@@ -449,6 +451,40 @@ fn registry_evidence(
         return None;
     }
     let detail = text_field(entry, desc_key).unwrap_or_default();
+    Some(Evidence::new(title, detail))
+}
+
+/// Evidence from an `npm` doc: registry entry plus whether its `bin` field
+/// actually ships the queried binary.
+///
+/// The `bin` field is either a path string (binary named after the package)
+/// or a map of binary name to path. Either way the verdict stays `Taken` —
+/// the registry name is occupied — but the tag tells the two cases apart.
+fn npm_evidence(name: &BinaryName, body: &str) -> Option<Evidence> {
+    let doc: serde_json::Value = serde_json::from_str(body).ok()?;
+    let title = text_field(&doc, "name")?;
+    if title.is_empty() {
+        return None;
+    }
+    let queried = name.as_str();
+    let ships = match doc.get("bin") {
+        Some(serde_json::Value::Object(binaries)) => {
+            binaries.keys().any(|key| key.as_str() == queried)
+        }
+        Some(serde_json::Value::String(_)) => title.as_str() == queried,
+        _ => false,
+    };
+    let tag = if ships {
+        format!("[ships `{queried}` binary]")
+    } else {
+        format!("[no `{queried}` binary declared]")
+    };
+    let description = text_field(&doc, "description").unwrap_or_default();
+    let detail = if description.is_empty() {
+        tag
+    } else {
+        format!("{description} {tag}")
+    };
     Some(Evidence::new(title, detail))
 }
 
@@ -757,73 +793,130 @@ mod tests {
 
     #[test]
     fn evidence_names_colliding_entries() {
+        let name = BinaryName::parse("serde").unwrap();
         let crates_body = r#"{"crate":{"name":"serde","description":"A framework"}}"#;
         assert_eq!(
-            Source::CratesIo.evidence(200, crates_body),
+            Source::CratesIo.evidence(&name, 200, crates_body),
             Some(Evidence::new("serde".to_owned(), "A framework".to_owned()))
         );
+        let name = BinaryName::parse("react").unwrap();
         let npm_body = r#"{"name":"react","description":"UI library"}"#;
         assert_eq!(
-            Source::Npm.evidence(200, npm_body),
-            Some(Evidence::new("react".to_owned(), "UI library".to_owned()))
+            Source::Npm.evidence(&name, 200, npm_body),
+            Some(Evidence::new(
+                "react".to_owned(),
+                "UI library [no `react` binary declared]".to_owned()
+            ))
         );
+        let name = BinaryName::parse("requests").unwrap();
         let pypi_body = r#"{"info":{"name":"requests","summary":"HTTP for Humans."}}"#;
         assert_eq!(
-            Source::Pypi.evidence(200, pypi_body),
+            Source::Pypi.evidence(&name, 200, pypi_body),
             Some(Evidence::new(
                 "requests".to_owned(),
                 "HTTP for Humans.".to_owned()
             ))
         );
+        let name = BinaryName::parse("rails").unwrap();
         let gems_body = r#"{"name":"rails","info":"Full-stack framework"}"#;
         assert_eq!(
-            Source::Rubygems.evidence(200, gems_body),
+            Source::Rubygems.evidence(&name, 200, gems_body),
             Some(Evidence::new(
                 "rails".to_owned(),
                 "Full-stack framework".to_owned()
             ))
         );
+        let name = BinaryName::parse("wget").unwrap();
         let brew_body = r#"{"name":"wget","desc":"Internet file retriever"}"#;
         assert_eq!(
-            Source::Homebrew.evidence(200, brew_body),
+            Source::Homebrew.evidence(&name, 200, brew_body),
             Some(Evidence::new(
                 "wget".to_owned(),
                 "Internet file retriever".to_owned()
             ))
         );
+        let name = BinaryName::parse("curl").unwrap();
         let repo_body = r#"[{"repo":"debian_12","srcname":"curl"},{"repo":"nix"}]"#;
         assert_eq!(
-            Source::Repology.evidence(200, repo_body),
+            Source::Repology.evidence(&name, 200, repo_body),
             Some(Evidence::new(
                 "2 packages".to_owned(),
                 "debian_12, nix".to_owned()
             ))
         );
+        let name = BinaryName::parse("ripgrep").unwrap();
         let hub_body =
             r#"{"total_count":2,"items":[{"full_name":"a/b","description":"Does things"}]}"#;
         assert_eq!(
-            Source::Github.evidence(200, hub_body),
+            Source::Github.evidence(&name, 200, hub_body),
             Some(Evidence::new("a/b".to_owned(), "Does things".to_owned()))
         );
     }
 
     #[test]
+    fn npm_evidence_marks_shipped_binaries() {
+        let name = BinaryName::parse("rg").unwrap();
+        let map_body = r#"{"name":"rg","description":"Docs","bin":{"rg":"./index.js"}}"#;
+        assert_eq!(
+            Source::Npm.evidence(&name, 200, map_body),
+            Some(Evidence::new(
+                "rg".to_owned(),
+                "Docs [ships `rg` binary]".to_owned()
+            ))
+        );
+        let string_body = r#"{"name":"rg","bin":"./cli.js"}"#;
+        assert_eq!(
+            Source::Npm.evidence(&name, 200, string_body),
+            Some(Evidence::new(
+                "rg".to_owned(),
+                "[ships `rg` binary]".to_owned()
+            ))
+        );
+        let other_body = r#"{"name":"rg","description":"Docs","bin":{"other":"./x.js"}}"#;
+        assert_eq!(
+            Source::Npm.evidence(&name, 200, other_body),
+            Some(Evidence::new(
+                "rg".to_owned(),
+                "Docs [no `rg` binary declared]".to_owned()
+            ))
+        );
+        let absent_body = r#"{"name":"rg","description":"Docs"}"#;
+        assert_eq!(
+            Source::Npm.evidence(&name, 200, absent_body),
+            Some(Evidence::new(
+                "rg".to_owned(),
+                "Docs [no `rg` binary declared]".to_owned()
+            ))
+        );
+    }
+
+    #[test]
     fn evidence_absent_without_taken_name() {
-        assert_eq!(Source::Npm.evidence(404, ""), None);
-        assert_eq!(Source::Npm.evidence(200, "not-json"), None);
-        assert_eq!(Source::Repology.evidence(200, "[]"), None);
-        assert_eq!(Source::Github.evidence(200, r#"{"total_count":0}"#), None);
-        assert_eq!(Source::LocalPath.evidence(200, ""), None);
+        let name = BinaryName::parse("rg").unwrap();
+        assert_eq!(Source::Npm.evidence(&name, 404, ""), None);
+        assert_eq!(Source::Npm.evidence(&name, 200, "not-json"), None);
+        assert_eq!(Source::Repology.evidence(&name, 200, "[]"), None);
+        assert_eq!(
+            Source::Github.evidence(&name, 200, r#"{"total_count":0}"#),
+            None
+        );
+        assert_eq!(Source::LocalPath.evidence(&name, 200, ""), None);
     }
 
     #[test]
     fn evidence_tolerates_missing_descriptions() {
+        let name = BinaryName::parse("x").unwrap();
         assert_eq!(
-            Source::Npm.evidence(200, r#"{"name":"x"}"#),
-            Some(Evidence::new("x".to_owned(), String::new()))
+            Source::Npm.evidence(&name, 200, r#"{"name":"x"}"#),
+            Some(Evidence::new(
+                "x".to_owned(),
+                "[no `x` binary declared]".to_owned()
+            ))
         );
+        let name = BinaryName::parse("a").unwrap();
         assert_eq!(
             Source::Github.evidence(
+                &name,
                 200,
                 r#"{"total_count":1,"items":[{"full_name":"a/b","description":null}]}"#
             ),

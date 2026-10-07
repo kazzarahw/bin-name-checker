@@ -78,6 +78,11 @@ Tip: `grep "^## \[" wiki/log.md | tail -5` shows the last 5 events.
   boundary, `Source::id` stability, GitHub 404), then 1 missed (`state_style`)
   → asserted per-state color codes → 56 caught, 10 unviable, 0 missed
   (17 unit tests).
+- Package-vs-binary honesty: `rg` hits on PyPI/RubyGems/GitHub are unrelated
+  projects sharing the name. npm evidence now inspects the `bin` field and
+  tags `[ships …]` vs `[no …]`; docs gained a binary-exact vs name-only
+  signal table. Verdicts unchanged (registry names still count as taken).
+  Mutants re-run: 61 caught, 11 unviable, 0 missed; eval still 8/8.
 - Output cleanup: ASCII table (`[x]`/`[ ]`/`[?]` + words, tty-only color via
   `anstyle`, 60-char evidence cap); per-source `Evidence` (package/repo name
   + description) in table and `--json`; npm moved to `/latest` doc;

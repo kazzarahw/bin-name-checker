@@ -6,17 +6,23 @@ or deferred. Live probes used `curl` with known-taken and gibberish names.
 
 ## Included
 
-| Source | Endpoint pattern | Taken | Free | Notes |
-| --- | --- | --- | --- | --- |
-| Local `PATH` | scan `PATH` for executable file | file found | not found | Ground truth for this machine; Unix checks the exec bit |
-| Shell builtins | static list in `bin-name-core` (`SHELL_BUILTINS`) | list hit | list miss | New gap closed 2026-10-07: `test`, `time`, `cd` are shadowed by the shell itself. Offline, pure, testable |
-| Repology | `GET /api/v1/project/<name>` | non-empty JSON array | `[]` or `404` | Aggregates 100+ distro repos in one call; package-name signal, not `/usr/bin/*` truth |
-| crates.io | `GET /api/v1/crates/<name>` | `2xx` | `404` | |
-| npm | `GET /registry.npmjs.org/<name>` | `2xx` | `404` | |
-| PyPI | `GET /pypi/<name>/json` | `2xx` | `404` | |
-| RubyGems | `GET /api/v1/gems/<name>.json` | `200` | `404` | Verified live (`rails` 200, gibberish 404); same trivial pattern as the others |
-| Homebrew | `GET /api/formula/<name>.json` on `formulae.brew.sh` | `200` | `404` | Verified live (`wget` 200, gibberish 404) |
-| GitHub | `GET /search/repositories?q=<name>+in:name` | `total_count > 0` | `total_count == 0` | Advisory mindshare signal only; a repo name is not a binary. Unauthenticated: 10 req/min — `GITHUB_TOKEN` raises it |
+Binary-exact sources prove a binary collision; name-only sources prove a
+registry/project name is occupied (which still blocks publishing that name
+and still confuses `npx`/`pipx`-style runners, but may ship no such binary —
+e.g. PyPI's `RG` is unrelated to ripgrep).
+
+| Source | Signal | Endpoint pattern | Taken | Free | Notes |
+| --- | --- | --- | --- | --- | --- |
+| Local `PATH` | binary-exact | scan `PATH` for executable file | file found | not found | Ground truth for this machine; Unix checks the exec bit |
+| Shell builtins | binary-exact | static list in `bin-name-core` (`SHELL_BUILTINS`) | list hit | list miss | `test`, `time`, `cd` are shadowed by the shell itself. Offline, pure, testable |
+| npm `bin` field | binary-exact when tagged | `GET /<name>/latest`, inspect `bin` | `bin` names the binary (`[ships …]` tag) | registry 404 | `[no …]` tag means the name is occupied but ships no such binary |
+| Repology | name-only | `GET /api/v1/project/<name>` | non-empty JSON array | `[]` or `404` | Aggregates 100+ distro repos in one call; package-name signal, not `/usr/bin/*` truth |
+| crates.io | name-only | `GET /api/v1/crates/<name>` | `2xx` | `404` | A same-named crate may be a squat or a library (observed: `rg` crate disclaims ripgrep) |
+| npm registry | name-only (plus `bin` tag) | `GET /<name>/latest` | `2xx` | `404` | Uses the small `/latest` doc, not the full metadata |
+| PyPI | name-only | `GET /pypi/<name>/json` | `2xx` | `404` | No console-script info in the JSON API |
+| RubyGems | name-only | `GET /api/v1/gems/<name>.json` | `200` | `404` | No executable list in the API |
+| Homebrew | name-only | `GET /api/formula/<name>.json` on `formulae.brew.sh` | `200` | `404` | Formula name usually matches its binary, but not always (`ripgrep` ships `rg`) |
+| GitHub | name-only (mindshare) | `GET /search/repositories?q=<name>+in:name` | `total_count > 0` | `total_count == 0` | A repo name is not a binary. Unauthenticated: 10 req/min — `GITHUB_TOKEN` raises it |
 
 ## Deferred
 

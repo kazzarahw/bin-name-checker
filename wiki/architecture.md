@@ -23,6 +23,7 @@ lives in `research/`; living state lives in `progress.md`.
 | Evals in `crates/xtask` (`cargo run -p xtask -- eval`) | adopted | 8 fixed rows against live sources; manual gate per testing conventions (no network in `#[test]`s) |
 | Evidence per source (`Source::evidence` + `Evidence`) | adopted | Table/JSON name the colliding package or repo (`serde` — framework, `a/b` — desc) instead of bare `HTTP 200`; parsed from already-fetched bodies, pure and unit-tested |
 | ASCII table via `render_table` + `anstyle`, no table crate | adopted | `[x]`/`[ ]`/`[?]` glyphs plus words (color-blind and grep safe); color only on tty without `NO_COLOR`/`TERM=dumb`; evidence capped at 60 chars; hand-rolled to avoid a heavy table dep |
+| npm `bin`-field tags in evidence | adopted | `rg` showed the gap: same-named packages are usually unrelated projects. `bin` map/string compared against the queried name → `[ships …]` vs `[no …]` tags; verdict stays `Taken` (registry name occupied). Only `PATH`, builtins, and tagged npm rows claim binary-exactness |
 
 ## Open questions
 
