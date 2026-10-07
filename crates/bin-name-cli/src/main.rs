@@ -204,7 +204,7 @@ fn check_remote(
             );
         }
     };
-    let availability = source.interpret(status, &body);
+    let availability = source.interpret(name, status, &body);
     let evidence = source.evidence(name, status, &body);
     Outcome::new(
         source,

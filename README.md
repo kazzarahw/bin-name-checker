@@ -26,28 +26,26 @@ Exit code is `0` when free, `1` when taken, `2` when unknown or invalid.
 ```text
 $ bin-name-checker test
 Checking 'test':
-source         state      detail
--------------  ---------  ------------------------------------------------------------
-local-path     [x] taken  found at /usr/sbin/test
-shell-builtin  [x] taken  shell builtin or reserved keyword
-repology       [x] taken  1 package - pld
+source         state        detail
+-------------  -----------  ------------------------------------------------------------
+local-path     [x] taken    found at /usr/sbin/test
+shell-builtin  [x] taken    shell builtin or reserved keyword
+repology       [?] unknown  1 package - pld
 crates-io      [ ] free
-npm            [x] taken  test - Node.js 18's node:test, as an npm package
+npm            [x] taken    test - Node.js 18's node:test, as an npm package [ships `...
 ...
 verdict: taken
 ```
 
-States are `[x] taken` (red), `[ ] free` (green), `[?] unknown` (yellow) on a
-terminal; pipes and `NO_COLOR` get plain ASCII. The detail column names the
-colliding package or repo with its description when the source provides one;
-`--json` reports the same per source (including `evidence`).
-
-Only some sources can prove a *binary* collision: local `PATH`, shell
-builtins, and `npm` (via the package's `bin` field, tagged `[ships \`<name>\`
-binary]` or `[no \`<name>\` binary declared]`). Every other source is a
-name-only signal — a package called `rg` on PyPI is unrelated to ripgrep, and
-the table shows you its real name and description so you can tell. See
-[`wiki/research/package-sources.md`](wiki/research/package-sources.md).
+Red (`[x] taken`) means a proven binary clash — an executable on `PATH`, a
+shell builtin, or an `npm` package whose `bin` field ships that exact binary.
+Yellow (`[?] unknown`) means the name is occupied somewhere without proof
+about the binary (a registry package, a distro package, or a failed check) —
+read the detail column and judge for yourself. Green (`[ ] free`) means
+confirmed absent. Colors show on a terminal; pipes and `NO_COLOR` get plain
+ASCII. `--json` reports the same per source (including `evidence`). See
+[`wiki/research/package-sources.md`](wiki/research/package-sources.md) for the
+per-source signal survey.
 
 ## Sources
 

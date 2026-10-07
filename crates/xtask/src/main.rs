@@ -30,9 +30,27 @@ struct Case {
     expect: Availability,
 }
 
-/// Live-verdict expectations. `Taken` rows need only one source to agree;
-/// `Free` rows need every source to agree, so keep them few and gibberish.
-const CASES: [Case; 8] = [
+/// Live-verdict expectations. `Taken` rows need a proven binary clash
+/// (local `PATH` or shell builtin here); `Unknown` rows have an occupied
+/// registry name but no proven binary; `Free` rows need every source to
+/// agree, so keep them few and gibberish.
+const CASES: [Case; 10] = [
+    Case {
+        name: "test",
+        expect: Availability::Taken,
+    },
+    Case {
+        name: "cd",
+        expect: Availability::Taken,
+    },
+    Case {
+        name: "ls",
+        expect: Availability::Taken,
+    },
+    Case {
+        name: "sh",
+        expect: Availability::Taken,
+    },
     Case {
         name: "git",
         expect: Availability::Taken,
@@ -43,19 +61,11 @@ const CASES: [Case; 8] = [
     },
     Case {
         name: "serde",
-        expect: Availability::Taken,
-    },
-    Case {
-        name: "react",
-        expect: Availability::Taken,
+        expect: Availability::Unknown,
     },
     Case {
         name: "requests",
-        expect: Availability::Taken,
-    },
-    Case {
-        name: "ripgrep",
-        expect: Availability::Taken,
+        expect: Availability::Unknown,
     },
     Case {
         name: "zzqxzqx-not-a-real-binary-987654321",

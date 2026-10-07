@@ -81,13 +81,19 @@ Tip: `grep "^## \[" wiki/log.md | tail -5` shows the last 5 events.
 - Package-vs-binary honesty: `rg` hits on PyPI/RubyGems/GitHub are unrelated
   projects sharing the name. npm evidence now inspects the `bin` field and
   tags `[ships …]` vs `[no …]`; docs gained a binary-exact vs name-only
-  signal table. Verdicts unchanged (registry names still count as taken).
+  signal table: red requires a proven binary clash, yellow covers occupied
+  names and failed checks. `iji` is the demonstration: npm says unknown with
+  `[no `iji` binary declared]` instead of contradicting itself.
   Mutants re-run: 61 caught, 11 unviable, 0 missed; eval still 8/8.
 - GitHub evidence ranks exact repo-name match first, then stars (best-match
   order surfaced obscure forks; pure stars surfaced substring noise).
 - Dropped GitHub (and with it `GITHUB_TOKEN`): forge search is mindshare, not
   package management. 8 sources remain, all package managers plus local.
   Mutants re-run: 58 caught, 9 unviable, 0 missed (17 unit tests); eval 8/8.
+- Red means proven binary clash now: `iji` showed npm contradicting itself
+  (taken + no binary ships). Name-only registry/Repology hits map to yellow;
+  only `PATH`, builtins, and `npm`-with-matching-`bin` can be red. Eval
+  covers all three verdicts (10/10); mutants 61 caught, 0 missed (18 tests).
 - Output cleanup: ASCII table (`[x]`/`[ ]`/`[?]` + words, tty-only color via
   `anstyle`, 60-char evidence cap); per-source `Evidence` (package/repo name
   + description) in table and `--json`; npm moved to `/latest` doc;

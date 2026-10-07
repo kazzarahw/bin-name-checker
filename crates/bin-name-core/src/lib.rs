@@ -237,31 +237,32 @@ impl Source {
 
     /// Map an HTTP `(status, body)` pair to an [`Availability`].
     ///
-    /// Never fails: unexpected statuses and unparsable bodies become
-    /// [`Availability::Unknown`]. [`Source::LocalPath`] and
+    /// Red means a proven binary clash; yellow means the name is occupied
+    /// somewhere without proof about the binary, or the check failed;
+    /// green means confirmed absent. Never fails: anything unexpected
+    /// becomes [`Availability::Unknown`]. [`Source::LocalPath`] and
     /// [`Source::ShellBuiltin`] have no HTTP representation and always map to
     /// `Unknown` here; the CLI fills in the real local verdicts separately.
     #[must_use]
-    pub fn interpret(self, status: u16, body: &str) -> Availability {
+    pub fn interpret(self, name: &BinaryName, status: u16, body: &str) -> Availability {
         match self {
             Self::LocalPath | Self::ShellBuiltin => Availability::Unknown,
-            Self::CratesIo | Self::Npm | Self::Pypi | Self::Rubygems | Self::Homebrew => {
-                registry_status(status)
-            }
+            Self::Npm => interpret_npm(name, status, body),
             Self::Repology => interpret_repology(status, body),
+            Self::CratesIo | Self::Pypi | Self::Rubygems | Self::Homebrew => name_presence(status),
         }
     }
 
-    /// Extract the colliding package or repo from a `Taken` response.
+    /// Extract the occupant named by a non-`Free` response.
     ///
-    /// Returns `None` unless [`interpret`](Self::interpret) says `Taken` and
-    /// the body names the colliding entry. Local sources never have evidence
-    /// here; the CLI reports their hit directly. For `npm`, the `bin` field
-    /// is compared against `name`, so evidence says whether the package
-    /// actually ships that binary or merely occupies the registry name.
+    /// Returns `None` when [`interpret`](Self::interpret) says `Free`, when
+    /// the body names nothing, or for local sources (the CLI reports those
+    /// hits directly). For `npm`, the `bin` field is compared against `name`,
+    /// so evidence says whether the package actually ships that binary or
+    /// merely occupies the registry name.
     #[must_use]
     pub fn evidence(self, name: &BinaryName, status: u16, body: &str) -> Option<Evidence> {
-        if self.interpret(status, body) != Availability::Taken {
+        if self.interpret(name, status, body) == Availability::Free {
             return None;
         }
         match self {
@@ -359,16 +360,56 @@ pub fn summarize(outcomes: &[Outcome]) -> Availability {
     Availability::Free
 }
 
-/// `2xx` means taken, `404` means free, anything else is unknown.
-fn registry_status(status: u16) -> Availability {
+/// Registry name check: `404` means absent, anything else is inconclusive.
+///
+/// These APIs say nothing about shipped binaries, so a hit can only ever be
+/// yellow (`Unknown`), never red (`Taken`).
+fn name_presence(status: u16) -> Availability {
     match status {
-        200..=299 => Availability::Taken,
         404 => Availability::Free,
         _ => Availability::Unknown,
     }
 }
 
-/// Repology returns `200` with a JSON array; `[]` means free.
+/// `npm` verdict: `Taken` only when the package's `bin` field ships the
+/// queried binary; a bare registry hit is yellow.
+fn interpret_npm(name: &BinaryName, status: u16, body: &str) -> Availability {
+    match status {
+        404 => Availability::Free,
+        200..=299 => match serde_json::from_str::<serde_json::Value>(body) {
+            Ok(doc) => {
+                if npm_ships_binary(name, &doc) {
+                    Availability::Taken
+                } else {
+                    Availability::Unknown
+                }
+            }
+            Err(_) => Availability::Unknown,
+        },
+        _ => Availability::Unknown,
+    }
+}
+
+/// Whether an `npm` doc's `bin` field ships the queried binary.
+///
+/// The field is either a path string (binary named after the package) or a
+/// map of binary name to path.
+fn npm_ships_binary(name: &BinaryName, doc: &serde_json::Value) -> bool {
+    let queried = name.as_str();
+    match doc.get("bin") {
+        Some(serde_json::Value::Object(binaries)) => {
+            binaries.keys().any(|key| key.as_str() == queried)
+        }
+        Some(serde_json::Value::String(_)) => doc
+            .get("name")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|package| package == queried),
+        _ => false,
+    }
+}
+
+/// Repology returns `200` with a JSON array; `[]` means free, anything
+/// listed means the name is occupied (binary status unknowable here).
 fn interpret_repology(status: u16, body: &str) -> Availability {
     match status {
         404 => Availability::Free,
@@ -382,7 +423,7 @@ fn interpret_repology(status: u16, body: &str) -> Availability {
                     if items.is_empty() {
                         Availability::Free
                     } else {
-                        Availability::Taken
+                        Availability::Unknown
                     }
                 }
                 Ok(_) | Err(_) => Availability::Unknown,
@@ -442,13 +483,7 @@ fn npm_evidence(name: &BinaryName, body: &str) -> Option<Evidence> {
         return None;
     }
     let queried = name.as_str();
-    let ships = match doc.get("bin") {
-        Some(serde_json::Value::Object(binaries)) => {
-            binaries.keys().any(|key| key.as_str() == queried)
-        }
-        Some(serde_json::Value::String(_)) => title.as_str() == queried,
-        _ => false,
-    };
+    let ships = npm_ships_binary(name, &doc);
     let tag = if ships {
         format!("[ships `{queried}` binary]")
     } else {
@@ -566,7 +601,7 @@ pub fn render_table(
         .iter()
         .map(|o| {
             let detail = render_evidence(o.evidence.as_ref());
-            let detail = if detail.is_empty() && o.availability == Availability::Taken {
+            let detail = if detail.is_empty() && o.availability != Availability::Free {
                 o.detail.clone()
             } else {
                 detail
@@ -691,27 +726,70 @@ mod tests {
     }
 
     #[test]
-    fn registry_status_mapping() {
-        assert_eq!(Source::CratesIo.interpret(200, ""), Availability::Taken);
-        assert_eq!(Source::CratesIo.interpret(404, ""), Availability::Free);
-        assert_eq!(Source::Npm.interpret(500, ""), Availability::Unknown);
-        assert_eq!(Source::Rubygems.interpret(200, ""), Availability::Taken);
-        assert_eq!(Source::Rubygems.interpret(404, ""), Availability::Free);
-        assert_eq!(Source::Homebrew.interpret(200, ""), Availability::Taken);
-        assert_eq!(Source::Homebrew.interpret(404, ""), Availability::Free);
-        assert_eq!(Source::Homebrew.interpret(429, ""), Availability::Unknown);
+    fn registry_hits_are_inconclusive_without_binary_proof() {
+        let name = BinaryName::parse("rg").unwrap();
+        assert_eq!(
+            Source::CratesIo.interpret(&name, 200, ""),
+            Availability::Unknown
+        );
+        assert_eq!(
+            Source::CratesIo.interpret(&name, 404, ""),
+            Availability::Free
+        );
+        assert_eq!(
+            Source::Rubygems.interpret(&name, 200, ""),
+            Availability::Unknown
+        );
+        assert_eq!(
+            Source::Rubygems.interpret(&name, 404, ""),
+            Availability::Free
+        );
+        assert_eq!(
+            Source::Homebrew.interpret(&name, 200, ""),
+            Availability::Unknown
+        );
+        assert_eq!(
+            Source::Homebrew.interpret(&name, 404, ""),
+            Availability::Free
+        );
+        assert_eq!(
+            Source::Homebrew.interpret(&name, 429, ""),
+            Availability::Unknown
+        );
+    }
+
+    #[test]
+    fn npm_verdict_follows_the_bin_field() {
+        let name = BinaryName::parse("rg").unwrap();
+        assert_eq!(
+            Source::Npm.interpret(&name, 200, r#"{"name":"rg","bin":{"rg":"./index.js"}}"#),
+            Availability::Taken
+        );
+        assert_eq!(
+            Source::Npm.interpret(&name, 200, r#"{"name":"rg"}"#),
+            Availability::Unknown
+        );
+        assert_eq!(Source::Npm.interpret(&name, 404, ""), Availability::Free);
+        assert_eq!(Source::Npm.interpret(&name, 500, ""), Availability::Unknown);
     }
 
     #[test]
     fn repology_empty_array_is_free() {
-        assert_eq!(Source::Repology.interpret(200, "[]"), Availability::Free);
+        let name = BinaryName::parse("curl").unwrap();
         assert_eq!(
-            Source::Repology.interpret(200, r#"[{"repo":"nix"}]"#),
-            Availability::Taken
+            Source::Repology.interpret(&name, 200, "[]"),
+            Availability::Free
         );
-        assert_eq!(Source::Repology.interpret(404, ""), Availability::Free);
         assert_eq!(
-            Source::Repology.interpret(200, "not-json"),
+            Source::Repology.interpret(&name, 200, r#"[{"repo":"nix"}]"#),
+            Availability::Unknown
+        );
+        assert_eq!(
+            Source::Repology.interpret(&name, 404, ""),
+            Availability::Free
+        );
+        assert_eq!(
+            Source::Repology.interpret(&name, 200, "not-json"),
             Availability::Unknown
         );
     }
@@ -730,9 +808,13 @@ mod tests {
 
     #[test]
     fn local_sources_have_no_http_mapping() {
-        assert_eq!(Source::LocalPath.interpret(200, ""), Availability::Unknown);
+        let name = BinaryName::parse("rg").unwrap();
         assert_eq!(
-            Source::ShellBuiltin.interpret(200, ""),
+            Source::LocalPath.interpret(&name, 200, ""),
+            Availability::Unknown
+        );
+        assert_eq!(
+            Source::ShellBuiltin.interpret(&name, 200, ""),
             Availability::Unknown
         );
     }

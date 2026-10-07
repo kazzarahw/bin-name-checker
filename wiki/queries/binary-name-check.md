@@ -19,10 +19,10 @@ installs a binary of that name). No one HTTP call answers all three.
    call. Exact binary-file accuracy needs per-distro file lists
    (`Contents-amd64.gz`, `pacman -F`, `dnf repoquery -l`); deferred as high
    cost, low marginal gain.
-3. **Language registries.** `crates.io`, `npm`, `PyPI` (plus `rubygems`, Go
-   proxy if needed) each have a trivial `GET`-by-name JSON API:
-   `200` = taken, `404` = free. `npm` additionally exposes the `bin` field,
-   so evidence says whether the package ships that binary or just occupies
+3. **Language registries.** `crates.io`, `npm`, `PyPI` each have a trivial
+   `GET`-by-name JSON API. A hit means the name is occupied — yellow, never
+   red — except `npm`, which additionally exposes the `bin` field, so
+   evidence says whether the package ships that binary or just occupies
    the name.
 
 ## Core gap: package name != binary name
