@@ -1,76 +1,60 @@
-# rust-llm-template
+# bin-name-checker
 
-A GitHub template repo for strictly verified Rust programs written with an LLM.
-Same hardening as `iji`, but project knowledge lives in a Karpathy-style
-llm-wiki (`raw/` + `wiki/`) instead of a loose `docs/` directory.
-
-Click **Use this template** to create a new repo. Then work through the
-setup checklist below.
-
-## Status
-
-Fresh template. Scaffold builds; no application logic yet.
-
-## Layout
-
-- `crates/app-core` — pure logic; no I/O
-- `crates/app-cli` — the `app` binary; all I/O lives here
-- `raw/` — immutable source material for the wiki
-- `wiki/` — LLM-maintained knowledge base (`index.md`, `log.md`, `overview.md`,
-  `architecture.md`, `progress.md`, `research/`, `queries/`)
-- `AGENTS.md` — project conventions + wiki schema (source of truth)
-
-## Setup checklist (do this once per new repo)
-
-- [ ] Replace `kazzarahw/rust-llm-template` in root `Cargo.toml` (`repository`).
-- [ ] Rename `app-core` / `app-cli` / `app` to your names. Update:
-  `deny.toml` `skip-tree`, `README.md`, `AGENTS.md`, crate `Cargo.toml` files.
-- [ ] Replace `@kazzarahw` in `.github/CODEOWNERS` with your username or team.
-- [ ] Set copyright holder in `LICENSE`.
-- [ ] On GitHub: Settings > General > check **Template repository** (for the
-  template itself). For each new repo: apply the ruleset below, enable
-  Dependabot, install hooks (`lefthook install`).
-- [ ] Install tooling: `cargo-nextest`, `cargo-deny`, `cargo-mutants`, `typos`,
-  `lefthook` (see `iji`'s PROGRESS notes for pinned versions if needed).
-- [ ] Rewrite `wiki/overview.md`, `wiki/progress.md`, `wiki/index.md`,
-  `wiki/log.md` for your project. Ingest your first source into `raw/`.
-
-Apply the repo ruleset (maintainer only):
+Check whether a candidate binary name is already taken, so you can pick unique
+names for new CLI projects.
 
 ```sh
-gh api --method PUT repos/kazzarahw/rust-llm-template/rulesets \
-  --input .github/rulesets/main.json
+cargo run -q -p bin-name-cli -- <name>        # human output
+cargo run -q -p bin-name-cli -- <name> --json # JSON for scripting
 ```
+
+Exit code is `0` when free, `1` when taken, `2` when unknown or invalid.
+
+## Sources
+
+Each run checks the local `PATH` and shell builtins (offline), plus these
+remote indexes over HTTPS:
+
+| Source | Signal |
+| --- | --- |
+| Repology | 100+ distro repos, aggregated by package name |
+| crates.io, npm, PyPI, RubyGems | language registries (`200` = taken, `404` = free) |
+| Homebrew formulae | `formulae.brew.sh` (`200` = taken, `404` = free) |
+| GitHub repo search | advisory mindshare signal only |
+
+Package names are not binary names (`rg` ships in the `ripgrep` package), so
+the verdict is advisory, never a guarantee. See
+[`wiki/research/package-sources.md`](wiki/research/package-sources.md) for the
+full source survey and inclusion rule.
+
+Set `GITHUB_TOKEN` to raise the GitHub search rate limit; pass `--offline` to
+skip remote sources entirely.
+
+## Evals
+
+`cargo run -p xtask -- eval` runs 8 fixed names (6 taken, 2 free) against the
+live sources and compares verdicts. It needs network access, so it is a manual
+`xtask` gate, not part of `cargo t`. `GITHUB_TOKEN` is picked up automatically
+when set.
 
 ## Development
 
-Requires a stable Rust toolchain (edition 2024, MSRV 1.93). The pinned
-components live in `rust-toolchain.toml`, so `rustup` will fetch them
-automatically.
+Stable Rust (edition 2024, MSRV 1.93; `rustup` fetches the pinned toolchain).
 
 ```sh
-cargo build
 cargo fmt-check
 cargo lint
 cargo t
 cargo test --doc --workspace
-cargo run
+cargo doc-check
+cargo deny check
+typos
 ```
 
-Aliases live in `.cargo/config.toml`. See `AGENTS.md` for the full list, the
-wiki workflows (ingest / query / lint), and the verification rules this repo
-enforces.
-
-## Wiki quickstart
-
-```sh
-# Ingest: drop a source, then ask the agent to ingest it.
-# The agent updates wiki pages, wiki/index.md, and appends to wiki/log.md.
-cp article.md raw/2026-10-06-article-slug.md
-```
-
-Log format: `## [YYYY-MM-DD] <op> | <title>` where `<op>` is
-`ingest`, `query`, `lint`, `decision`, or `progress`.
+Aliases live in `.cargo/config.toml`. Layout and wiki workflows are defined in
+[`AGENTS.md`](AGENTS.md): pure logic in `crates/bin-name-core`, all I/O in
+`crates/bin-name-cli`, project tooling in `crates/xtask`, compounding
+knowledge in `wiki/` (`raw/` sources are immutable).
 
 ## License
 

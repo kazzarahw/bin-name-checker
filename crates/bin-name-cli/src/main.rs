@@ -1,10 +1,13 @@
-//! `app` — check whether a binary name is taken.
+//! `bin-name-checker` — check whether a binary name is taken.
 //!
-//! Local `PATH` lookup plus HTTP queries to Repology, `crates.io`, `npm`,
-//! `PyPI`, and GitHub repo search. Prints per-source verdicts and an overall
-//! verdict; exits `0` when free, `1` when taken, `2` when unknown.
+//! Local `PATH` lookup, shell-builtin lookup, plus HTTP queries to Repology,
+//! `crates.io`, `npm`, `PyPI`, `RubyGems`, Homebrew formulae, and GitHub repo
+//! search. Prints per-source verdicts and an overall verdict; exits `0` when
+//! free, `1` when taken, `2` when unknown.
 
-use app_core::{ALL_SOURCES, Availability, BinaryName, Outcome, Source, summarize};
+use bin_name_core::{
+    ALL_SOURCES, Availability, BinaryName, Outcome, Source, is_shell_builtin, summarize,
+};
 use clap::Parser;
 use std::path::Path;
 use std::process::ExitCode;
@@ -12,13 +15,20 @@ use std::time::Duration;
 
 /// Check whether a binary name is already taken.
 #[derive(Parser, Debug)]
-#[command(name = "app", version, about = "Check if a binary name is taken")]
+#[command(
+    name = "bin-name-checker",
+    version,
+    about = "Check if a binary name is taken"
+)]
 struct Args {
     /// Candidate binary name, e.g. `rg`
     name: String,
     /// Emit JSON instead of human-readable lines
     #[arg(long)]
     json: bool,
+    /// Skip remote sources; check local `PATH` and shell builtins only
+    #[arg(long)]
+    offline: bool,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -50,28 +60,26 @@ fn run() -> ExitCode {
         }
     };
 
-    let client = match reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(10))
-        .user_agent("bin-name-checker/0.1.0")
-        .build()
-    {
-        Ok(built) => built,
-        Err(problem) => {
-            eprintln!("cannot build HTTP client: {problem}");
-            return ExitCode::from(2);
-        }
-    };
-
     let mut outcomes: Vec<Outcome> = Vec::new();
     outcomes.push(check_local(&name));
-    for source in ALL_SOURCES {
-        if source == Source::LocalPath {
-            continue;
-        }
-        let Some(url) = source.query_url(&name) else {
-            continue;
+    outcomes.push(check_builtin(&name));
+    if !args.offline {
+        let client = match build_client() {
+            Ok(built) => built,
+            Err(problem) => {
+                eprintln!("cannot build HTTP client: {problem}");
+                return ExitCode::from(2);
+            }
         };
-        outcomes.push(check_remote(&client, source, &url));
+        for source in ALL_SOURCES {
+            if source == Source::LocalPath || source == Source::ShellBuiltin {
+                continue;
+            }
+            let Some(url) = source.query_url(&name) else {
+                continue;
+            };
+            outcomes.push(check_remote(&client, source, &url));
+        }
     }
 
     let verdict = summarize(&outcomes);
@@ -86,6 +94,14 @@ fn run() -> ExitCode {
         Availability::Taken => ExitCode::FAILURE,
         Availability::Unknown => ExitCode::from(2),
     }
+}
+
+/// Build the shared blocking HTTP client.
+fn build_client() -> Result<reqwest::blocking::Client, reqwest::Error> {
+    reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .user_agent(format!("bin-name-checker/{}", env!("CARGO_PKG_VERSION")))
+        .build()
 }
 
 /// Search each directory on `PATH` for an executable file called `name`.
@@ -118,19 +134,42 @@ fn check_local(name: &BinaryName) -> Outcome {
     )
 }
 
+/// Check `name` against the static shell-builtin list.
+#[must_use]
+fn check_builtin(name: &BinaryName) -> Outcome {
+    if is_shell_builtin(name) {
+        Outcome::new(
+            Source::ShellBuiltin,
+            Availability::Taken,
+            "shell builtin or reserved keyword".to_owned(),
+            None,
+        )
+    } else {
+        Outcome::new(
+            Source::ShellBuiltin,
+            Availability::Free,
+            "not a shell builtin".to_owned(),
+            None,
+        )
+    }
+}
+
 /// `GET` `url` and interpret the response for `source`.
 ///
 /// Network failures, timeouts, and unparsable bodies become
-/// [`Availability::Unknown`], never a hard error.
+/// [`Availability::Unknown`], never a hard error. When `GITHUB_TOKEN` is set,
+/// it is sent as a bearer token on GitHub requests to raise the rate limit.
 #[must_use]
 fn check_remote(client: &reqwest::blocking::Client, source: Source, url: &str) -> Outcome {
-    let request = if source == Source::Github {
-        client
-            .get(url)
-            .header(reqwest::header::ACCEPT, "application/vnd.github+json")
-    } else {
-        client.get(url)
-    };
+    let mut request = client.get(url);
+    if source == Source::Github {
+        request = request.header(reqwest::header::ACCEPT, "application/vnd.github+json");
+        if let Ok(token) = std::env::var("GITHUB_TOKEN")
+            && !token.is_empty()
+        {
+            request = request.bearer_auth(token);
+        }
+    }
     let response = match request.send() {
         Ok(ok) => ok,
         Err(problem) => {

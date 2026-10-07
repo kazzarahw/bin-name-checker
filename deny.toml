@@ -15,8 +15,7 @@ wildcards = "deny"
 # requirement. Cargo itself resolves them correctly, and cargo-deny 0.20 cannot
 # resolve inherited `[workspace.dependencies]` path entries, so scope the
 # wildcard ban to external crates only.
-# TODO(template): rename entries here when you rename the template crates.
-skip-tree = ["app-core", "app-cli"]
+skip-tree = ["bin-name-core", "bin-name-cli", "xtask"]
 
 [sources]
 unknown-registry = "deny"

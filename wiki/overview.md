@@ -5,11 +5,13 @@ so you can pick unique names for new CLI projects.
 
 ## Intent
 
-A small Rust CLI (`app` binary): given a name like `rg`, it checks the local
-`PATH` plus remote indexes over plain HTTPS — Repology (100+ distro repos),
-`crates.io`, `npm`, `PyPI`, and GitHub repository search — then prints a
+A small Rust CLI (`bin-name-checker` binary): given a name like `rg`, it
+checks the local `PATH` and shell builtins (offline) plus remote indexes over
+plain HTTPS — Repology (100+ distro repos), `crates.io`, `npm`, `PyPI`,
+`RubyGems`, Homebrew formulae, and GitHub repository search — then prints a
 per-source verdict and an overall verdict (`free`/`taken`/`unknown`). Exit
-code is `0`/`1`/`2` respectively, with `--json` for scripting.
+code is `0`/`1`/`2` respectively, with `--json` for scripting and `--offline`
+for local-only checks. `GITHUB_TOKEN`, when set, authenticates GitHub search.
 
 ## Goals
 
@@ -17,7 +19,7 @@ code is `0`/`1`/`2` respectively, with `--json` for scripting.
    `Result` with `thiserror`; no `unwrap`/`expect`/`panic` outside tests.
 2. **Functional core.** Pure functions, immutable data, effects at the edges:
    name validation, URL building, response interpretation, and verdict rollup
-   live in `app-core` with no I/O.
+   live in `bin-name-core` with no I/O.
 3. **Compounding knowledge.** Research, decisions, and progress accumulate in
    this wiki via ingest / query / lint (see `AGENTS.md`), not scattered chat.
 

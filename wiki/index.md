@@ -16,7 +16,8 @@ query-filed-back, and lint fix. Read this file first when answering questions.
 ## Research (compiled synthesis, not raw dumps)
 
 <!-- One bullet per wiki/research/<topic>.md page. -->
-- _No research pages yet. Ingest a source to create the first one._
+- [package-sources](research/package-sources.md) — surveyed name-collision
+  sources: included vs deferred with live-verified rationale + inclusion rule.
 
 ## Queries (filed-back answers)
 

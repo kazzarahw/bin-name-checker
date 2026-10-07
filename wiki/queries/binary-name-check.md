@@ -33,9 +33,12 @@ Example observed live: `rg` is `free` on Repology (the package is `ripgrep`)
 but `taken` on `crates.io`/`npm`/`PyPI`/GitHub and on local `PATH`. Any
 checker built on package indexes can only advise, never guarantee.
 
-## What `app` implements (MVP)
+## What `bin-name-checker` implements
 
-- `app-core`: `BinaryName` validation, `Source::{id,query_url,interpret}`,
-  `Outcome`, `summarize` (any-`Taken` wins). All pure and unit-tested.
-- `app-cli`: `PATH` scan + blocking HTTPS to Repology, `crates.io`, `npm`,
-  `PyPI`, GitHub search; human and `--json` output; exit `0`/`1`/`2`.
+- `bin-name-core`: `BinaryName` validation, `Source::{id,query_url,interpret}`,
+  `Outcome`, `summarize` (any-`Taken` wins), `SHELL_BUILTINS` +
+  `is_shell_builtin`. All pure and unit-tested.
+- `bin-name-cli`: `PATH` + builtin checks, blocking HTTPS to Repology,
+  `crates.io`, `npm`, `PyPI`, `RubyGems`, Homebrew, GitHub search; human and
+  `--json` output; exit `0`/`1`/`2`; `--offline` and `GITHUB_TOKEN` support.
+- `xtask eval`: 8 fixed rows against live sources as a manual gate.

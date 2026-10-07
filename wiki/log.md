@@ -41,7 +41,6 @@ Tip: `grep "^## \[" wiki/log.md | tail -5` shows the last 5 events.
 - Updated `wiki/index.md` to catalog it.
 
 ## [2026-10-07] progress | MVP bin-name-checker implemented
-
 - `app-core`: `BinaryName`, `NameError`, `Availability`, `Source`
   (`LocalPath`, `Repology`, `CratesIo`, `Npm`, `Pypi`, `Github`),
   `Outcome`, `summarize`; 7 unit tests.
@@ -55,3 +54,28 @@ Tip: `grep "^## \[" wiki/log.md | tail -5` shows the last 5 events.
   `deny check`, `typos`.
 - Rewrote `wiki/overview.md`, recorded decisions in `wiki/architecture.md`,
   updated `wiki/progress.md` + `wiki/index.md`.
+
+## [2026-10-07] decision | Evals live in xtask, never in tests
+
+- `AGENTS.md` Testing section now states: evals needing live network access
+  live in `crates/xtask` as manual gates, never as `#[test]`s. Co-evolves the
+  schema with the new `xtask` layout entry.
+
+## [2026-10-07] progress | Polish: rename, versions, evals, source gaps
+
+- Renamed `app-core`/`app-cli`/`app` → `bin-name-core`/`bin-name-cli`/
+  `bin-name-checker`; updated `deny.toml` `skip-tree`, `README.md`
+  (rewritten for the real project), `AGENTS.md`.
+- Real `repository` URL (`kazzarahw/bin-name-checker`), description, keywords;
+  user-agent now derives from `CARGO_PKG_VERSION`.
+- Added RubyGems + Homebrew sources (both verified live 200/404) and a
+  `ShellBuiltin` source (`SHELL_BUILTINS` + `is_shell_builtin`); 9 unit tests.
+- Added `GITHUB_TOKEN` bearer auth and `--offline` to the CLI.
+- Added `crates/xtask` with `eval` (8 fixed rows, live): 8/8 passed.
+- Filed `wiki/research/package-sources.md` (included vs deferred + rule);
+  deferred: Go proxy, GitLab/Codeberg, Snap, per-distro file lists.
+- `cargo mutants -p bin-name-core`: 5 missed → strengthened tests (length
+  boundary, `Source::id` stability, GitHub 404) → 26 caught, 6 unviable,
+  0 missed (11 unit tests).
+- Full gate green: `fmt-check`, `lint`, `t`, `test --doc`, `doc-check`,
+  `deny check`, `typos`.

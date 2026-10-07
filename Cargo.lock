@@ -53,27 +53,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "app-cli"
-version = "0.1.0"
-dependencies = [
- "app-core",
- "clap",
- "reqwest",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "app-core"
-version = "0.1.0"
-dependencies = [
- "proptest",
- "serde",
- "serde_json",
- "thiserror",
-]
-
-[[package]]
 name = "atomic-waker"
 version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -96,6 +75,27 @@ name = "base64"
 version = "0.23.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ac07cdecf99051d9a5238b80f35af32cdeba5b336e55d957b318b50137e18da5"
+
+[[package]]
+name = "bin-name-cli"
+version = "0.1.0"
+dependencies = [
+ "bin-name-core",
+ "clap",
+ "reqwest",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "bin-name-core"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
 
 [[package]]
 name = "bit-set"
@@ -1394,6 +1394,16 @@ name = "writeable"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
+
+[[package]]
+name = "xtask"
+version = "0.1.0"
+dependencies = [
+ "bin-name-core",
+ "clap",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "yoke"

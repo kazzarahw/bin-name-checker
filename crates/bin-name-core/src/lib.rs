@@ -1,8 +1,8 @@
 //! Pure logic for checking whether a binary name is taken.
 //!
 //! No filesystem, network, clock, or environment access. I/O lives in
-//! `app-cli`; this crate only validates names, builds query URLs, interprets
-//! responses, and aggregates verdicts.
+//! `bin-name-cli`; this crate only validates names, builds query URLs,
+//! interprets responses, and aggregates verdicts.
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -91,6 +91,8 @@ pub enum Availability {
 pub enum Source {
     /// Executable already on local `PATH`.
     LocalPath,
+    /// Bourne-style shell builtin or reserved keyword (see [`SHELL_BUILTINS`]).
+    ShellBuiltin,
     /// Repology package index (aggregates 100+ distro repos).
     Repology,
     /// `crates.io` registry.
@@ -99,19 +101,107 @@ pub enum Source {
     Npm,
     /// `PyPI` registry.
     Pypi,
+    /// `RubyGems` registry.
+    Rubygems,
+    /// Homebrew formulae.
+    Homebrew,
     /// GitHub repository name search.
     Github,
 }
 
 /// Every source checked by default, in display order.
-pub const ALL_SOURCES: [Source; 6] = [
+pub const ALL_SOURCES: [Source; 9] = [
     Source::LocalPath,
+    Source::ShellBuiltin,
     Source::Repology,
     Source::CratesIo,
     Source::Npm,
     Source::Pypi,
+    Source::Rubygems,
+    Source::Homebrew,
     Source::Github,
 ];
+
+/// Bourne-style shell builtins and reserved keywords (bash/POSIX overlap).
+///
+/// A binary with one of these names is shadowed by the shell itself, so it
+/// counts as taken even when no file exists on `PATH`. The list is
+/// deliberately conservative: common interactive shells only, not every
+/// `fish`/`zsh` extra.
+pub const SHELL_BUILTINS: &[&str] = &[
+    "alias",
+    "bg",
+    "bind",
+    "break",
+    "builtin",
+    "caller",
+    "case",
+    "cd",
+    "command",
+    "compgen",
+    "complete",
+    "compopt",
+    "continue",
+    "declare",
+    "dirs",
+    "disown",
+    "echo",
+    "enable",
+    "eval",
+    "exec",
+    "exit",
+    "export",
+    "false",
+    "fc",
+    "fg",
+    "for",
+    "function",
+    "getopts",
+    "hash",
+    "help",
+    "history",
+    "if",
+    "jobs",
+    "kill",
+    "let",
+    "local",
+    "logout",
+    "mapfile",
+    "popd",
+    "printf",
+    "pushd",
+    "pwd",
+    "read",
+    "readarray",
+    "readonly",
+    "return",
+    "select",
+    "set",
+    "shift",
+    "shopt",
+    "source",
+    "suspend",
+    "test",
+    "time",
+    "times",
+    "trap",
+    "true",
+    "type",
+    "typeset",
+    "ulimit",
+    "umask",
+    "unalias",
+    "unset",
+    "until",
+    "wait",
+    "while",
+];
+
+/// Whether `name` collides with a shell builtin or reserved keyword.
+#[must_use]
+pub fn is_shell_builtin(name: &BinaryName) -> bool {
+    SHELL_BUILTINS.iter().any(|b| *b == name.as_str())
+}
 
 impl Source {
     /// Short stable identifier used in text and JSON output.
@@ -119,28 +209,33 @@ impl Source {
     pub fn id(self) -> &'static str {
         match self {
             Self::LocalPath => "local-path",
+            Self::ShellBuiltin => "shell-builtin",
             Self::Repology => "repology",
             Self::CratesIo => "crates-io",
             Self::Npm => "npm",
             Self::Pypi => "pypi",
+            Self::Rubygems => "rubygems",
+            Self::Homebrew => "homebrew",
             Self::Github => "github",
         }
     }
 
     /// HTTP URL to query for `name`, or `None` when the source is local.
     ///
-    /// `None` only for [`Source::LocalPath`]; every remote source returns
-    /// `Some`. Names are pre-validated (no `/` or whitespace), so no
-    /// percent-encoding is needed.
+    /// `None` for [`Source::LocalPath`] and [`Source::ShellBuiltin`]; every
+    /// remote source returns `Some`. Names are pre-validated (no `/` or
+    /// whitespace), so no percent-encoding is needed.
     #[must_use]
     pub fn query_url(self, name: &BinaryName) -> Option<String> {
         let n = name.as_str();
         match self {
-            Self::LocalPath => None,
+            Self::LocalPath | Self::ShellBuiltin => None,
             Self::Repology => Some(format!("https://repology.org/api/v1/project/{n}")),
             Self::CratesIo => Some(format!("https://crates.io/api/v1/crates/{n}")),
             Self::Npm => Some(format!("https://registry.npmjs.org/{n}")),
             Self::Pypi => Some(format!("https://pypi.org/pypi/{n}/json")),
+            Self::Rubygems => Some(format!("https://rubygems.org/api/v1/gems/{n}.json")),
+            Self::Homebrew => Some(format!("https://formulae.brew.sh/api/formula/{n}.json")),
             Self::Github => Some(format!(
                 "https://api.github.com/search/repositories?q={n}+in:name&per_page=5"
             )),
@@ -150,14 +245,16 @@ impl Source {
     /// Map an HTTP `(status, body)` pair to an [`Availability`].
     ///
     /// Never fails: unexpected statuses and unparsable bodies become
-    /// [`Availability::Unknown`]. [`Source::LocalPath`] has no HTTP
-    /// representation and always maps to `Unknown` here; the CLI fills in the
-    /// real local verdict separately.
+    /// [`Availability::Unknown`]. [`Source::LocalPath`] and
+    /// [`Source::ShellBuiltin`] have no HTTP representation and always map to
+    /// `Unknown` here; the CLI fills in the real local verdicts separately.
     #[must_use]
     pub fn interpret(self, status: u16, body: &str) -> Availability {
         match self {
-            Self::LocalPath => Availability::Unknown,
-            Self::CratesIo | Self::Npm | Self::Pypi => registry_status(status),
+            Self::LocalPath | Self::ShellBuiltin => Availability::Unknown,
+            Self::CratesIo | Self::Npm | Self::Pypi | Self::Rubygems | Self::Homebrew => {
+                registry_status(status)
+            }
             Self::Repology => interpret_repology(status, body),
             Self::Github => interpret_github(status, body),
         }
@@ -278,6 +375,32 @@ mod tests {
     }
 
     #[test]
+    fn name_length_boundary() {
+        let at_limit = "a".repeat(255);
+        assert!(BinaryName::parse(&at_limit).is_ok());
+        let over_limit = "a".repeat(256);
+        assert_eq!(BinaryName::parse(&over_limit), Err(NameError::TooLong));
+    }
+
+    #[test]
+    fn source_ids_are_stable() {
+        let ids = [
+            (Source::LocalPath, "local-path"),
+            (Source::ShellBuiltin, "shell-builtin"),
+            (Source::Repology, "repology"),
+            (Source::CratesIo, "crates-io"),
+            (Source::Npm, "npm"),
+            (Source::Pypi, "pypi"),
+            (Source::Rubygems, "rubygems"),
+            (Source::Homebrew, "homebrew"),
+            (Source::Github, "github"),
+        ];
+        assert_eq!(ids.len(), ALL_SOURCES.len());
+        for (source, want) in ids {
+            assert_eq!(source.id(), want);
+        }
+    }
+    #[test]
     fn invalid_names_rejected() {
         assert_eq!(BinaryName::parse(""), Err(NameError::Empty));
         assert_eq!(BinaryName::parse("a/b"), Err(NameError::ContainsSlash));
@@ -293,11 +416,14 @@ mod tests {
     fn query_urls_contain_name() {
         let name = BinaryName::parse("rg").unwrap();
         assert!(Source::LocalPath.query_url(&name).is_none());
+        assert!(Source::ShellBuiltin.query_url(&name).is_none());
         for source in [
             Source::Repology,
             Source::CratesIo,
             Source::Npm,
             Source::Pypi,
+            Source::Rubygems,
+            Source::Homebrew,
             Source::Github,
         ] {
             let url = source.query_url(&name).unwrap();
@@ -310,6 +436,11 @@ mod tests {
         assert_eq!(Source::CratesIo.interpret(200, ""), Availability::Taken);
         assert_eq!(Source::CratesIo.interpret(404, ""), Availability::Free);
         assert_eq!(Source::Npm.interpret(500, ""), Availability::Unknown);
+        assert_eq!(Source::Rubygems.interpret(200, ""), Availability::Taken);
+        assert_eq!(Source::Rubygems.interpret(404, ""), Availability::Free);
+        assert_eq!(Source::Homebrew.interpret(200, ""), Availability::Taken);
+        assert_eq!(Source::Homebrew.interpret(404, ""), Availability::Free);
+        assert_eq!(Source::Homebrew.interpret(429, ""), Availability::Unknown);
     }
 
     #[test]
@@ -338,6 +469,28 @@ mod tests {
         );
         assert_eq!(Source::Github.interpret(200, "{}"), Availability::Unknown);
         assert_eq!(Source::Github.interpret(403, "{}"), Availability::Unknown);
+        assert_eq!(Source::Github.interpret(404, ""), Availability::Free);
+    }
+
+    #[test]
+    fn shell_builtins_detected() {
+        for raw in ["test", "cd", "echo", "time", "kill", "while"] {
+            let name = BinaryName::parse(raw).unwrap();
+            assert!(is_shell_builtin(&name), "{raw} should be a builtin");
+        }
+        for raw in ["rg", "ls", "git", "curl"] {
+            let name = BinaryName::parse(raw).unwrap();
+            assert!(!is_shell_builtin(&name), "{raw} should not be a builtin");
+        }
+    }
+
+    #[test]
+    fn local_sources_have_no_http_mapping() {
+        assert_eq!(Source::LocalPath.interpret(200, ""), Availability::Unknown);
+        assert_eq!(
+            Source::ShellBuiltin.interpret(200, ""),
+            Availability::Unknown
+        );
     }
 
     #[test]

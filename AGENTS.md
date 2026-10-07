@@ -20,8 +20,9 @@ A minimal, strictly verified Rust workspace designed for LLM-written programs:
 
 ```text
 crates/
-  app-core/    pure logic: types, traits, algorithms. No I/O.
-  app-cli/     the `app` binary. All I/O (fs, network, time, env) lives here.
+  bin-name-core/  pure logic: types, traits, algorithms. No I/O.
+  bin-name-cli/   the `bin-name-checker` binary. All I/O (fs, network, time, env) lives here.
+  xtask/          project tooling (evals). Run via `cargo run -p xtask -- <task>`; never part of `cargo t`.
 raw/           immutable source material (articles, papers, transcripts).
 wiki/          LLM-maintained knowledge base (see "llm-wiki" below).
   index.md       content catalog: every page with a link + one-line summary.
@@ -36,10 +37,7 @@ AGENTS.md      this file: project conventions + wiki schema.
 
 Pure logic belongs in library crates so failures localize and the core is
 testable without a filesystem or network. If custom tooling logic is ever needed,
-add a small `xtask` crate rather than a shell script.
-
-TODO(template): rename `app-core` / `app-cli` / `app` to your project names.
-When you do, update `deny.toml` `skip-tree`, `README.md`, and this file.
+add a small `xtask` crate rather than a shell script (see `crates/xtask`).
 
 ## Commands
 
@@ -171,7 +169,7 @@ Report findings; fix with user guidance; log the pass.
 
 - Pure functions: owned or borrowed in, owned out, no hidden state, no globals,
   no interior mutability without a justifying comment. Pass clock, RNG, and I/O
-  handles as parameters; side effects live in `app-cli`.
+  handles as parameters; side effects live in `bin-name-cli`.
 - Make invalid states unrepresentable: newtypes for IDs and units, enums over
   bool or string flags, typestate for lifecycle stages.
 - Errors are `Result` with `thiserror` enums in libraries. Propagate with `?`.
@@ -185,8 +183,10 @@ Report findings; fix with user guidance; log the pass.
 - Test behavior, not implementation. When behavior changes, change the tests
   that describe the old behavior.
 - Business logic must be testable without a network or a terminal. Use mocks
-  and fakes at the `app-cli` boundary.
+  and fakes at the `bin-name-cli` boundary.
 - No real provider APIs or paid tokens in tests. Record and replay instead.
+- Evals that need live network access live in `crates/xtask` as manual gates,
+  never as `#[test]`s.
 - Any function claimed idempotent, round-trippable, commutative, or
   order-independent gets a `proptest` asserting that property.
 - Check surviving mutants from CI and strengthen the tests that missed them.

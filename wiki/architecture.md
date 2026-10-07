@@ -8,7 +8,7 @@ lives in `research/`; living state lives in `progress.md`.
 
 | Decision | Status | Rationale |
 | --- | --- | --- |
-| Workspace with `app-core` (pure) + `app-cli` (I/O) | adopted | Failures localize; core testable without fs/network |
+| Workspace with `bin-name-core` (pure) + `bin-name-cli` (I/O) + `xtask` (manual gates) | adopted | Failures localize; core testable without fs/network; live-network evals stay out of `cargo t` |
 | Strict `[workspace.lints]`, opt-in per crate | adopted | Compiler as verification; see root `Cargo.toml` |
 | Suppressions via `#[expect(..., reason)]` only | adopted | Stale suppressions become compile errors |
 | llm-wiki (`raw/` + `wiki/`) instead of `docs/` | adopted | Knowledge compounds; see `AGENTS.md` |
@@ -17,8 +17,12 @@ lives in `research/`; living state lives in `progress.md`.
 | `Source::query_url` returns `Option<String>` (`None` = local) | adopted | Invalid states unrepresentable: local checks have no URL by construction |
 | Verdict rollup: any-`Taken` > any-`Unknown` > `Free`; empty = `Unknown` | adopted | A single collision vetoes the name; silent `Free` on zero checks would lie |
 | Exit codes `0` free / `1` taken / `2` unknown-or-invalid | adopted | Scriptable; `main` returns `ExitCode`, never calls `process::exit` (forbidden lint) |
+| Shell builtins as a `Source` (`SHELL_BUILTINS` + `is_shell_builtin`) | adopted | `test`/`time`/`cd` are shadowed by the shell itself — a real collision class the `PATH` scan misses; offline, pure, unit-tested |
+| New sources need one-`GET` JSON + `200`/`404` semantics | adopted | RubyGems + Homebrew verified live and added; Go proxy (bare names never resolve), GitLab/Codeberg (duplicate advisory class), Snap (custom header) deferred — see [research](research/package-sources.md) |
+| `GITHUB_TOKEN` bearer auth when set; `--offline` flag | adopted | Raises GitHub search quota for evals; local-only mode for firewalled use. Token read from env at runtime, never committed |
+| Evals in `crates/xtask` (`cargo run -p xtask -- eval`) | adopted | 8 fixed rows against live sources; manual gate per testing conventions (no network in `#[test]`s) |
 
 ## Open questions
 
-- Rename `app-core` / `app-cli` / `app` to `bin-name-*` per template checklist?
-  Deferred: churn with no behavior gain (see [progress](progress.md)).
+- _None. The `bin-name-*` rename is done; per-distro file accuracy stays
+  deferred per the [research](research/package-sources.md) inclusion rule._

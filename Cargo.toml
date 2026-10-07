@@ -7,10 +7,10 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.93"
 license = "MIT"
-# TODO(template-derived): set your real repository URL after creating a repo from this template.
-repository = "https://github.com/kazzarahw/rust-llm-template"
+description = "Check whether a candidate binary name is already taken"
+repository = "https://github.com/kazzarahw/bin-name-checker"
 readme = "README.md"
-keywords = ["cli", "template"]
+keywords = ["cli", "naming", "developer-tools"]
 categories = ["command-line-utilities"]
 
 [workspace.dependencies]

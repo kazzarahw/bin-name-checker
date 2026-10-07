@@ -1,19 +1,21 @@
 [package]
-name = "app-core"
+name = "bin-name-cli"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[[bin]]
+name = "bin-name-checker"
+path = "src/main.rs"
+
 [lints]
 workspace = true
 
 [dependencies]
-thiserror.workspace = true
+bin-name-core = { path = "../bin-name-core" }
+clap.workspace = true
+reqwest.workspace = true
 serde.workspace = true
-serde_json.workspace = true
-
-[dev-dependencies]
-proptest.workspace = true
 serde_json.workspace = true
