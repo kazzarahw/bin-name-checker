@@ -19,8 +19,8 @@ for local-only.
 - Deps: `clap` (derive), `reqwest` (`blocking` + `native-tls`), `serde`,
   `serde_json`. `native-tls` chosen over `rustls-tls` to stay inside the
   existing `deny.toml` license allow-list (no policy edit).
-- Evals: `cargo run -p xtask -- eval`, 8 fixed rows against live sources,
-  currently 8/8.
+- Evals: `cargo run -p xtask -- eval`, 10 fixed rows (taken/unknown/free)
+  against live sources, currently 10/10.
 - llm-wiki live: `research/package-sources.md` records the source survey;
   `architecture.md` records all decisions; template rename done.
 

@@ -39,4 +39,5 @@ checker built on package indexes can only advise, never guarantee.
 - `bin-name-cli`: `PATH` + builtin checks, blocking HTTPS to Repology,
   `crates.io`, `npm`, `PyPI`, `RubyGems`, and Homebrew; human and `--json`
   output; exit `0`/`1`/`2`; `--offline` support.
-- `xtask eval`: 8 fixed rows against live sources as a manual gate.
+- `xtask eval`: 10 fixed rows covering all three verdicts against live
+  sources as a manual gate.

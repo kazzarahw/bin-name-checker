@@ -67,9 +67,9 @@ Pass `--offline` to skip remote sources entirely.
 
 ## Evals
 
-`cargo run -p xtask -- eval` runs 8 fixed names (6 taken, 2 free) against the
-live sources and compares verdicts. It needs network access, so it is a manual
-`xtask` gate, not part of `cargo t`.
+`cargo run -p xtask -- eval` runs 10 fixed names (6 taken, 2 unknown, 2 free)
+against the live sources and compares verdicts. It needs network access, so
+it is a manual `xtask` gate, not part of `cargo t`.
 
 ## Development
 
