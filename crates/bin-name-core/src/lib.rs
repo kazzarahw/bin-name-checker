@@ -105,12 +105,10 @@ pub enum Source {
     Rubygems,
     /// Homebrew formulae.
     Homebrew,
-    /// GitHub repository name search.
-    Github,
 }
 
 /// Every source checked by default, in display order.
-pub const ALL_SOURCES: [Source; 9] = [
+pub const ALL_SOURCES: [Source; 8] = [
     Source::LocalPath,
     Source::ShellBuiltin,
     Source::Repology,
@@ -119,7 +117,6 @@ pub const ALL_SOURCES: [Source; 9] = [
     Source::Pypi,
     Source::Rubygems,
     Source::Homebrew,
-    Source::Github,
 ];
 
 /// Bourne-style shell builtins and reserved keywords (bash/POSIX overlap).
@@ -216,7 +213,6 @@ impl Source {
             Self::Pypi => "pypi",
             Self::Rubygems => "rubygems",
             Self::Homebrew => "homebrew",
-            Self::Github => "github",
         }
     }
 
@@ -236,9 +232,6 @@ impl Source {
             Self::Pypi => Some(format!("https://pypi.org/pypi/{n}/json")),
             Self::Rubygems => Some(format!("https://rubygems.org/api/v1/gems/{n}.json")),
             Self::Homebrew => Some(format!("https://formulae.brew.sh/api/formula/{n}.json")),
-            Self::Github => Some(format!(
-                "https://api.github.com/search/repositories?q={n}+in:name&per_page=5"
-            )),
         }
     }
 
@@ -256,7 +249,6 @@ impl Source {
                 registry_status(status)
             }
             Self::Repology => interpret_repology(status, body),
-            Self::Github => interpret_github(status, body),
         }
     }
 
@@ -280,12 +272,11 @@ impl Source {
             Self::Rubygems => registry_evidence(body, None, "name", "info"),
             Self::Homebrew => registry_evidence(body, None, "name", "desc"),
             Self::Repology => repology_evidence(body),
-            Self::Github => github_evidence(body),
         }
     }
 }
 
-/// Evidence behind a `Taken` verdict: which package or repo collides.
+/// Evidence behind a `Taken` verdict: which package collides.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Evidence {
     /// Colliding package, formula, or `owner/repo` — or a count summary.
@@ -401,22 +392,6 @@ fn interpret_repology(status: u16, body: &str) -> Availability {
     }
 }
 
-/// GitHub code search returns `200` with `{"total_count": N, ...}`.
-fn interpret_github(status: u16, body: &str) -> Availability {
-    match status {
-        200..=299 => match serde_json::from_str::<serde_json::Value>(body) {
-            Ok(value) => match value.get("total_count").and_then(serde_json::Value::as_u64) {
-                Some(0) => Availability::Free,
-                Some(_) => Availability::Taken,
-                None => Availability::Unknown,
-            },
-            Err(_) => Availability::Unknown,
-        },
-        404 => Availability::Free,
-        _ => Availability::Unknown,
-    }
-}
-
 /// Pull a normalized string field out of a JSON object.
 fn text_field(value: &serde_json::Value, key: &str) -> Option<String> {
     let raw = value.get(key)?.as_str()?;
@@ -506,18 +481,6 @@ fn repology_evidence(body: &str) -> Option<Evidence> {
         .filter_map(|e| e.get("repo").and_then(serde_json::Value::as_str))
         .collect::<Vec<&str>>()
         .join(", ");
-    Some(Evidence::new(title, detail))
-}
-
-/// Evidence from a GitHub repo search: the top hit's `owner/repo`.
-fn github_evidence(body: &str) -> Option<Evidence> {
-    let doc: serde_json::Value = serde_json::from_str(body).ok()?;
-    let top = doc.get("items")?.as_array()?.first()?;
-    let title = text_field(top, "full_name")?;
-    if title.is_empty() {
-        return None;
-    }
-    let detail = text_field(top, "description").unwrap_or_default();
     Some(Evidence::new(title, detail))
 }
 
@@ -691,7 +654,6 @@ mod tests {
             (Source::Pypi, "pypi"),
             (Source::Rubygems, "rubygems"),
             (Source::Homebrew, "homebrew"),
-            (Source::Github, "github"),
         ];
         assert_eq!(ids.len(), ALL_SOURCES.len());
         for (source, want) in ids {
@@ -722,7 +684,6 @@ mod tests {
             Source::Pypi,
             Source::Rubygems,
             Source::Homebrew,
-            Source::Github,
         ] {
             let url = source.query_url(&name).unwrap();
             assert!(url.contains("rg"), "{source:?} url should contain name");
@@ -753,21 +714,6 @@ mod tests {
             Source::Repology.interpret(200, "not-json"),
             Availability::Unknown
         );
-    }
-
-    #[test]
-    fn github_total_count_mapping() {
-        assert_eq!(
-            Source::Github.interpret(200, r#"{"total_count":0}"#),
-            Availability::Free
-        );
-        assert_eq!(
-            Source::Github.interpret(200, r#"{"total_count":3}"#),
-            Availability::Taken
-        );
-        assert_eq!(Source::Github.interpret(200, "{}"), Availability::Unknown);
-        assert_eq!(Source::Github.interpret(403, "{}"), Availability::Unknown);
-        assert_eq!(Source::Github.interpret(404, ""), Availability::Free);
     }
 
     #[test]
@@ -844,13 +790,6 @@ mod tests {
                 "debian_12, nix".to_owned()
             ))
         );
-        let name = BinaryName::parse("ripgrep").unwrap();
-        let hub_body =
-            r#"{"total_count":2,"items":[{"full_name":"a/b","description":"Does things"}]}"#;
-        assert_eq!(
-            Source::Github.evidence(&name, 200, hub_body),
-            Some(Evidence::new("a/b".to_owned(), "Does things".to_owned()))
-        );
     }
 
     #[test]
@@ -896,10 +835,6 @@ mod tests {
         assert_eq!(Source::Npm.evidence(&name, 404, ""), None);
         assert_eq!(Source::Npm.evidence(&name, 200, "not-json"), None);
         assert_eq!(Source::Repology.evidence(&name, 200, "[]"), None);
-        assert_eq!(
-            Source::Github.evidence(&name, 200, r#"{"total_count":0}"#),
-            None
-        );
         assert_eq!(Source::LocalPath.evidence(&name, 200, ""), None);
     }
 
@@ -913,14 +848,10 @@ mod tests {
                 "[no `x` binary declared]".to_owned()
             ))
         );
-        let name = BinaryName::parse("a").unwrap();
+        let name = BinaryName::parse("w").unwrap();
         assert_eq!(
-            Source::Github.evidence(
-                &name,
-                200,
-                r#"{"total_count":1,"items":[{"full_name":"a/b","description":null}]}"#
-            ),
-            Some(Evidence::new("a/b".to_owned(), String::new()))
+            Source::Homebrew.evidence(&name, 200, r#"{"name":"w"}"#),
+            Some(Evidence::new("w".to_owned(), String::new()))
         );
     }
 
@@ -1024,7 +955,7 @@ mod tests {
             url.clone(),
         );
         let unknown = Outcome::new(
-            Source::Github,
+            Source::Homebrew,
             Availability::Unknown,
             String::new(),
             None,

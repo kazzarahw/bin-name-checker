@@ -6,12 +6,12 @@ so you can pick unique names for new CLI projects.
 ## Intent
 
 A small Rust CLI (`bin-name-checker` binary): given a name like `rg`, it
-checks the local `PATH` and shell builtins (offline) plus remote indexes over
-plain HTTPS — Repology (100+ distro repos), `crates.io`, `npm`, `PyPI`,
-`RubyGems`, Homebrew formulae, and GitHub repository search — then prints a
-per-source verdict and an overall verdict (`free`/`taken`/`unknown`). Exit
-code is `0`/`1`/`2` respectively, with `--json` for scripting and `--offline`
-for local-only checks. `GITHUB_TOKEN`, when set, authenticates GitHub search.
+checks the local `PATH` and shell builtins (offline) plus remote package
+indexes over plain HTTPS — Repology (100+ distro repos), `crates.io`, `npm`,
+`PyPI`, `RubyGems`, and Homebrew formulae — then prints a per-source verdict
+and an overall verdict (`free`/`taken`/`unknown`). Exit code is `0`/`1`/`2`
+respectively, with `--json` for scripting and `--offline` for local-only
+checks.
 
 ## Goals
 

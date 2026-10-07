@@ -83,6 +83,11 @@ Tip: `grep "^## \[" wiki/log.md | tail -5` shows the last 5 events.
   tags `[ships …]` vs `[no …]`; docs gained a binary-exact vs name-only
   signal table. Verdicts unchanged (registry names still count as taken).
   Mutants re-run: 61 caught, 11 unviable, 0 missed; eval still 8/8.
+- GitHub evidence ranks exact repo-name match first, then stars (best-match
+  order surfaced obscure forks; pure stars surfaced substring noise).
+- Dropped GitHub (and with it `GITHUB_TOKEN`): forge search is mindshare, not
+  package management. 8 sources remain, all package managers plus local.
+  Mutants re-run: 58 caught, 9 unviable, 0 missed (17 unit tests); eval 8/8.
 - Output cleanup: ASCII table (`[x]`/`[ ]`/`[?]` + words, tty-only color via
   `anstyle`, 60-char evidence cap); per-source `Evidence` (package/repo name
   + description) in table and `--json`; npm moved to `/latest` doc;

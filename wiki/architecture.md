@@ -19,11 +19,12 @@ lives in `research/`; living state lives in `progress.md`.
 | Exit codes `0` free / `1` taken / `2` unknown-or-invalid | adopted | Scriptable; `main` returns `ExitCode`, never calls `process::exit` (forbidden lint) |
 | Shell builtins as a `Source` (`SHELL_BUILTINS` + `is_shell_builtin`) | adopted | `test`/`time`/`cd` are shadowed by the shell itself — a real collision class the `PATH` scan misses; offline, pure, unit-tested |
 | New sources need one-`GET` JSON + `200`/`404` semantics | adopted | RubyGems + Homebrew verified live and added; Go proxy (bare names never resolve), GitLab/Codeberg (duplicate advisory class), Snap (custom header) deferred — see [research](research/package-sources.md) |
-| `GITHUB_TOKEN` bearer auth when set; `--offline` flag | adopted | Raises GitHub search quota for evals; local-only mode for firewalled use. Token read from env at runtime, never committed |
+| `--offline` flag | adopted | Local-only mode (`PATH` + builtins) for firewalled use |
 | Evals in `crates/xtask` (`cargo run -p xtask -- eval`) | adopted | 8 fixed rows against live sources; manual gate per testing conventions (no network in `#[test]`s) |
-| Evidence per source (`Source::evidence` + `Evidence`) | adopted | Table/JSON name the colliding package or repo (`serde` — framework, `a/b` — desc) instead of bare `HTTP 200`; parsed from already-fetched bodies, pure and unit-tested |
+| Evidence per source (`Source::evidence` + `Evidence`) | adopted | Table/JSON name the colliding package (`serde` — framework) instead of bare `HTTP 200`; parsed from already-fetched bodies, pure and unit-tested |
 | ASCII table via `render_table` + `anstyle`, no table crate | adopted | `[x]`/`[ ]`/`[?]` glyphs plus words (color-blind and grep safe); color only on tty without `NO_COLOR`/`TERM=dumb`; evidence capped at 60 chars; hand-rolled to avoid a heavy table dep |
 | npm `bin`-field tags in evidence | adopted | `rg` showed the gap: same-named packages are usually unrelated projects. `bin` map/string compared against the queried name → `[ships …]` vs `[no …]` tags; verdict stays `Taken` (registry name occupied). Only `PATH`, builtins, and tagged npm rows claim binary-exactness |
+| Forge repo search dropped | adopted | GitHub was included, then dropped with the other forges deferred: scanning repos is mindshare, not package management. Only package managers plus local checks remain |
 
 ## Open questions
 

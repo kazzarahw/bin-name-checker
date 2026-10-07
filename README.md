@@ -59,22 +59,19 @@ remote indexes over HTTPS:
 | Repology | 100+ distro repos, aggregated by package name |
 | crates.io, npm, PyPI, RubyGems | language registries (`200` = taken, `404` = free) |
 | Homebrew formulae | `formulae.brew.sh` (`200` = taken, `404` = free) |
-| GitHub repo search | advisory mindshare signal only |
 
 Package names are not binary names (`rg` ships in the `ripgrep` package), so
 the verdict is advisory, never a guarantee. See
 [`wiki/research/package-sources.md`](wiki/research/package-sources.md) for the
 full source survey and inclusion rule.
 
-Set `GITHUB_TOKEN` to raise the GitHub search rate limit; pass `--offline` to
-skip remote sources entirely.
+Pass `--offline` to skip remote sources entirely.
 
 ## Evals
 
 `cargo run -p xtask -- eval` runs 8 fixed names (6 taken, 2 free) against the
 live sources and compares verdicts. It needs network access, so it is a manual
-`xtask` gate, not part of `cargo t`. `GITHUB_TOKEN` is picked up automatically
-when set.
+`xtask` gate, not part of `cargo t`.
 
 ## Development
 

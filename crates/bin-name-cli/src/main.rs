@@ -1,9 +1,9 @@
 //! `bin-name-checker` — check whether a binary name is taken.
 //!
 //! Local `PATH` lookup, shell-builtin lookup, plus HTTP queries to Repology,
-//! `crates.io`, `npm`, `PyPI`, `RubyGems`, Homebrew formulae, and GitHub repo
-//! search. Prints a per-source table and an overall verdict; exits `0` when
-//! free, `1` when taken, `2` when unknown.
+//! `crates.io`, `npm`, `PyPI`, `RubyGems`, and Homebrew formulae. Prints a
+//! per-source table and an overall verdict; exits `0` when free, `1` when
+//! taken, `2` when unknown.
 
 use bin_name_core::{
     ALL_SOURCES, Availability, BinaryName, ColorMode, Outcome, Source, is_shell_builtin,
@@ -171,8 +171,7 @@ fn check_builtin(name: &BinaryName) -> Outcome {
 /// `GET` `url` and interpret the response for `source`.
 ///
 /// Network failures, timeouts, and unparsable bodies become
-/// [`Availability::Unknown`], never a hard error. When `GITHUB_TOKEN` is set,
-/// it is sent as a bearer token on GitHub requests to raise the rate limit.
+/// [`Availability::Unknown`], never a hard error.
 #[must_use]
 fn check_remote(
     client: &reqwest::blocking::Client,
@@ -180,16 +179,7 @@ fn check_remote(
     name: &BinaryName,
     url: &str,
 ) -> Outcome {
-    let mut request = client.get(url);
-    if source == Source::Github {
-        request = request.header(reqwest::header::ACCEPT, "application/vnd.github+json");
-        if let Ok(token) = std::env::var("GITHUB_TOKEN")
-            && !token.is_empty()
-        {
-            request = request.bearer_auth(token);
-        }
-    }
-    let response = match request.send() {
+    let response = match client.get(url).send() {
         Ok(ok) => ok,
         Err(problem) => {
             return Outcome::new(

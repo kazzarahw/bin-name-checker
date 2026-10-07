@@ -91,7 +91,6 @@ fn main() -> ExitCode {
 
 /// Run every [`CASES`] row against the real CLI and compare verdicts.
 fn run_eval() -> ExitCode {
-    print_token_hint();
     let mut passed: Vec<bool> = Vec::new();
     for case in CASES {
         passed.push(run_case(&case));
@@ -105,15 +104,6 @@ fn run_eval() -> ExitCode {
         println!("eval: {failures}/{total} failed");
         ExitCode::FAILURE
     }
-}
-
-/// Note whether GitHub requests will be authenticated (higher rate limit).
-fn print_token_hint() {
-    let state = match std::env::var("GITHUB_TOKEN") {
-        Ok(token) if !token.is_empty() => "set",
-        Ok(_) | Err(_) => "unset (unauthenticated GitHub search: 10 req/min)",
-    };
-    println!("eval: GITHUB_TOKEN {state}");
 }
 
 /// Run one case through `bin-name-cli --json`; return whether it passed.

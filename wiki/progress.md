@@ -7,9 +7,9 @@ as part of any change that moves the work forward.
 
 Polished past MVP and green across the full gate. `bin-name-checker <name>`
 checks local `PATH` + shell builtins + Repology + crates.io + npm + PyPI +
-RubyGems + Homebrew + GitHub search, prints per-source verdicts, exits `0`
+RubyGems + Homebrew, prints per-source verdicts, exits `0`
 free / `1` taken / `2` unknown-or-invalid. `--json` for scripting, `--offline`
-for local-only, `GITHUB_TOKEN` for GitHub quota.
+for local-only.
 
 - Cargo workspace, resolver 3, edition 2024, MSRV 1.93.
 - Three crates: `bin-name-core` (pure logic), `bin-name-cli` (the
@@ -32,9 +32,9 @@ for local-only, `GITHUB_TOKEN` for GitHub quota.
   CI run before any job started. Checks now explicit per job.
 - [x] Polish: renamed `app-*` → `bin-name-*` (+ binary `bin-name-checker`);
   real `repository`/description/keywords; version-derived user-agent; added
-  RubyGems + Homebrew + shell-builtin sources with tests; `GITHUB_TOKEN` +
-  `--offline`; `xtask` eval (8/8 live); `research/package-sources.md` source
-  survey; rewrote `README.md`; full gate green.
+  RubyGems + Homebrew + shell-builtin sources with tests; `--offline`;
+  `xtask` eval (8/8 live); `research/package-sources.md` source survey;
+  rewrote `README.md`; dropped GitHub forge search; full gate green.
 
 ## Next
 

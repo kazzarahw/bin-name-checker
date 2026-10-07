@@ -22,7 +22,6 @@ e.g. PyPI's `RG` is unrelated to ripgrep).
 | PyPI | name-only | `GET /pypi/<name>/json` | `2xx` | `404` | No console-script info in the JSON API |
 | RubyGems | name-only | `GET /api/v1/gems/<name>.json` | `200` | `404` | No executable list in the API |
 | Homebrew | name-only | `GET /api/formula/<name>.json` on `formulae.brew.sh` | `200` | `404` | Formula name usually matches its binary, but not always (`ripgrep` ships `rg`) |
-| GitHub | name-only (mindshare) | `GET /search/repositories?q=<name>+in:name` | `total_count > 0` | `total_count == 0` | A repo name is not a binary. Unauthenticated: 10 req/min — `GITHUB_TOKEN` raises it |
 
 ## Deferred
 
@@ -35,6 +34,12 @@ e.g. PyPI's `RG` is unrelated to ripgrep).
 | Per-distro file lists | Debian `Contents-*`, `pacman -F`, `dnf repoquery -l` | True `/usr/bin/*` accuracy, but one mirror format per distro family — high maintenance for marginal gain over Repology |
 | pkgs.org / command-not-found.com | No free JSON API for file-level lookup | Manual-useful, not machine-checkable |
 | Man pages / shell completions | Weak signal, no clean index | Mindshare at best; skip |
+
+## Dropped
+
+| Source | Rationale |
+| --- | --- |
+| GitHub repo search (was included; dropped 2026-10-07) | Scanning every repo is mindshare, not package management — same reason the other forges stayed deferred |
 
 ## Standing rule
 

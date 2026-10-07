@@ -7,9 +7,8 @@ repo implements.
 
 Binary names have no central registry (unlike domains or `npm`/`crates.io`
 package names). Collisions are local (`PATH`), per-distro (which package ships
-`/usr/bin/<name>`), per-ecosystem (which `npm`/`cargo`/`pip` package installs
-a binary of that name), and mindshare (a GitHub project with the same name).
-No one HTTP call answers all four.
+`/usr/bin/<name>`), and per-ecosystem (which `npm`/`cargo`/`pip` package
+installs a binary of that name). No one HTTP call answers all three.
 
 ## Layers (cheapest signal first)
 
@@ -22,10 +21,9 @@ No one HTTP call answers all four.
    cost, low marginal gain.
 3. **Language registries.** `crates.io`, `npm`, `PyPI` (plus `rubygems`, Go
    proxy if needed) each have a trivial `GET`-by-name JSON API:
-   `200` = taken, `404` = free.
-4. **Forges.** GitHub/GitLab/Codeberg repo-name search. Low collision signal
-   (a repo name is not a binary name), high mindshare signal. Rate-limited;
-   treat as advisory.
+   `200` = taken, `404` = free. `npm` additionally exposes the `bin` field,
+   so evidence says whether the package ships that binary or just occupies
+   the name.
 
 ## Core gap: package name != binary name
 
@@ -39,6 +37,6 @@ checker built on package indexes can only advise, never guarantee.
   `Outcome`, `summarize` (any-`Taken` wins), `SHELL_BUILTINS` +
   `is_shell_builtin`. All pure and unit-tested.
 - `bin-name-cli`: `PATH` + builtin checks, blocking HTTPS to Repology,
-  `crates.io`, `npm`, `PyPI`, `RubyGems`, Homebrew, GitHub search; human and
-  `--json` output; exit `0`/`1`/`2`; `--offline` and `GITHUB_TOKEN` support.
+  `crates.io`, `npm`, `PyPI`, `RubyGems`, and Homebrew; human and `--json`
+  output; exit `0`/`1`/`2`; `--offline` support.
 - `xtask eval`: 8 fixed rows against live sources as a manual gate.
