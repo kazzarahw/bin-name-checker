@@ -10,6 +10,25 @@ cargo run -q -p bin-name-cli -- <name> --json # JSON for scripting
 
 Exit code is `0` when free, `1` when taken, `2` when unknown or invalid.
 
+```text
+$ bin-name-checker test
+Checking 'test':
+source         state      detail
+-------------  ---------  ------------------------------------------------------------
+local-path     [x] taken  found at /usr/sbin/test
+shell-builtin  [x] taken  shell builtin or reserved keyword
+repology       [x] taken  1 package - pld
+crates-io      [ ] free
+npm            [x] taken  test - Node.js 18's node:test, as an npm package
+...
+verdict: taken
+```
+
+States are `[x] taken` (red), `[ ] free` (green), `[?] unknown` (yellow) on a
+terminal; pipes and `NO_COLOR` get plain ASCII. The detail column names the
+colliding package or repo with its description when the source provides one;
+`--json` reports the same per source (including `evidence`).
+
 ## Sources
 
 Each run checks the local `PATH` and shell builtins (offline), plus these

@@ -2,11 +2,12 @@
 //!
 //! Local `PATH` lookup, shell-builtin lookup, plus HTTP queries to Repology,
 //! `crates.io`, `npm`, `PyPI`, `RubyGems`, Homebrew formulae, and GitHub repo
-//! search. Prints per-source verdicts and an overall verdict; exits `0` when
+//! search. Prints a per-source table and an overall verdict; exits `0` when
 //! free, `1` when taken, `2` when unknown.
 
 use bin_name_core::{
-    ALL_SOURCES, Availability, BinaryName, Outcome, Source, is_shell_builtin, summarize,
+    ALL_SOURCES, Availability, BinaryName, ColorMode, Outcome, Source, is_shell_builtin,
+    render_table, summarize,
 };
 use clap::Parser;
 use std::path::Path;
@@ -36,7 +37,15 @@ struct ReportEntry {
     source: Source,
     availability: Availability,
     detail: String,
+    evidence: Option<ReportEvidence>,
     url: Option<String>,
+}
+
+/// Serializable copy of [`bin_name_core::Evidence`].
+#[derive(Debug, serde::Serialize)]
+struct ReportEvidence {
+    title: String,
+    detail: String,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -86,7 +95,7 @@ fn run() -> ExitCode {
     if args.json {
         print_json(&name, verdict, &outcomes);
     } else {
-        print_human(&outcomes, verdict);
+        println!("{}", render_table(&name, &outcomes, verdict, color_mode()));
     }
 
     match verdict {
@@ -113,6 +122,7 @@ fn check_local(name: &BinaryName) -> Outcome {
             Availability::Unknown,
             "PATH is not set".to_owned(),
             None,
+            None,
         );
     };
     for dir in std::env::split_paths(&paths) {
@@ -123,6 +133,7 @@ fn check_local(name: &BinaryName) -> Outcome {
                 Availability::Taken,
                 format!("found at {}", candidate.display()),
                 None,
+                None,
             );
         }
     }
@@ -130,6 +141,7 @@ fn check_local(name: &BinaryName) -> Outcome {
         Source::LocalPath,
         Availability::Free,
         "not found in PATH".to_owned(),
+        None,
         None,
     )
 }
@@ -143,12 +155,14 @@ fn check_builtin(name: &BinaryName) -> Outcome {
             Availability::Taken,
             "shell builtin or reserved keyword".to_owned(),
             None,
+            None,
         )
     } else {
         Outcome::new(
             Source::ShellBuiltin,
             Availability::Free,
             "not a shell builtin".to_owned(),
+            None,
             None,
         )
     }
@@ -177,6 +191,7 @@ fn check_remote(client: &reqwest::blocking::Client, source: Source, url: &str) -
                 source,
                 Availability::Unknown,
                 format!("request failed: {problem}"),
+                None,
                 Some(url.to_owned()),
             );
         }
@@ -189,15 +204,18 @@ fn check_remote(client: &reqwest::blocking::Client, source: Source, url: &str) -
                 source,
                 Availability::Unknown,
                 format!("unreadable body (HTTP {status}): {problem}"),
+                None,
                 Some(url.to_owned()),
             );
         }
     };
     let availability = source.interpret(status, &body);
+    let evidence = source.evidence(status, &body);
     Outcome::new(
         source,
         availability,
         format!("HTTP {status}"),
+        evidence,
         Some(url.to_owned()),
     )
 }
@@ -219,21 +237,14 @@ fn is_executable(path: &Path) -> bool {
 }
 
 #[must_use]
-fn label(availability: Availability) -> &'static str {
-    match availability {
-        Availability::Taken => "taken",
-        Availability::Free => "free",
-        Availability::Unknown => "unknown",
+fn color_mode() -> ColorMode {
+    use std::io::IsTerminal as _;
+    let dumb = std::env::var("TERM").is_ok_and(|term| term == "dumb");
+    if std::io::stdout().is_terminal() && !dumb && std::env::var("NO_COLOR").is_err() {
+        ColorMode::Color
+    } else {
+        ColorMode::Plain
     }
-}
-
-fn print_human(outcomes: &[Outcome], verdict: Availability) {
-    for outcome in outcomes {
-        let id = outcome.source.id();
-        let state = label(outcome.availability);
-        println!("{id}: {state} - {}", outcome.detail);
-    }
-    println!("verdict: {}", label(verdict));
 }
 
 fn print_json(name: &BinaryName, verdict: Availability, outcomes: &[Outcome]) {
@@ -243,6 +254,10 @@ fn print_json(name: &BinaryName, verdict: Availability, outcomes: &[Outcome]) {
             source: o.source,
             availability: o.availability,
             detail: o.detail.clone(),
+            evidence: o.evidence.as_ref().map(|e| ReportEvidence {
+                title: e.title.clone(),
+                detail: e.detail.clone(),
+            }),
             url: o.url.clone(),
         })
         .collect::<Vec<ReportEntry>>();

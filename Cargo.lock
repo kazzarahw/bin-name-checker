@@ -91,6 +91,7 @@ dependencies = [
 name = "bin-name-core"
 version = "0.1.0"
 dependencies = [
+ "anstyle",
  "proptest",
  "serde",
  "serde_json",

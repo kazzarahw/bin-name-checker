@@ -232,7 +232,7 @@ impl Source {
             Self::LocalPath | Self::ShellBuiltin => None,
             Self::Repology => Some(format!("https://repology.org/api/v1/project/{n}")),
             Self::CratesIo => Some(format!("https://crates.io/api/v1/crates/{n}")),
-            Self::Npm => Some(format!("https://registry.npmjs.org/{n}")),
+            Self::Npm => Some(format!("https://registry.npmjs.org/{n}/latest")),
             Self::Pypi => Some(format!("https://pypi.org/pypi/{n}/json")),
             Self::Rubygems => Some(format!("https://rubygems.org/api/v1/gems/{n}.json")),
             Self::Homebrew => Some(format!("https://formulae.brew.sh/api/formula/{n}.json")),
@@ -259,6 +259,54 @@ impl Source {
             Self::Github => interpret_github(status, body),
         }
     }
+
+    /// Extract the colliding package or repo from a `Taken` response.
+    ///
+    /// Returns `None` unless [`interpret`](Self::interpret) says `Taken` and
+    /// the body names the colliding entry. Local sources never have evidence
+    /// here; the CLI reports their hit directly.
+    #[must_use]
+    pub fn evidence(self, status: u16, body: &str) -> Option<Evidence> {
+        if self.interpret(status, body) != Availability::Taken {
+            return None;
+        }
+        match self {
+            Self::LocalPath | Self::ShellBuiltin => None,
+            Self::CratesIo => registry_evidence(body, Some("crate"), "name", "description"),
+            Self::Npm => registry_evidence(body, None, "name", "description"),
+            Self::Pypi => registry_evidence(body, Some("info"), "name", "summary"),
+            Self::Rubygems => registry_evidence(body, None, "name", "info"),
+            Self::Homebrew => registry_evidence(body, None, "name", "desc"),
+            Self::Repology => repology_evidence(body),
+            Self::Github => github_evidence(body),
+        }
+    }
+}
+
+/// Evidence behind a `Taken` verdict: which package or repo collides.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Evidence {
+    /// Colliding package, formula, or `owner/repo` — or a count summary.
+    pub title: String,
+    /// Short description, or repo list; empty when unavailable.
+    pub detail: String,
+}
+
+impl Evidence {
+    /// Build an [`Evidence`] from its parts.
+    #[must_use]
+    pub fn new(title: String, detail: String) -> Self {
+        Self { title, detail }
+    }
+}
+
+/// Whether [`render_table`] may emit ANSI color codes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ColorMode {
+    /// Plain ASCII, no escape codes (pipes, tests, `NO_COLOR`).
+    Plain,
+    /// Bold headers plus red/green/yellow states.
+    Color,
 }
 
 /// Single source verdict.
@@ -268,8 +316,10 @@ pub struct Outcome {
     pub source: Source,
     /// What that source said.
     pub availability: Availability,
-    /// Human-readable detail (HTTP status, PATH hit, error).
+    /// Human-readable detail (PATH hit, error, HTTP status fallback).
     pub detail: String,
+    /// Colliding package or repo, when the source named one.
+    pub evidence: Option<Evidence>,
     /// Query URL, or `None` for local checks.
     pub url: Option<String>,
 }
@@ -281,12 +331,14 @@ impl Outcome {
         source: Source,
         availability: Availability,
         detail: String,
+        evidence: Option<Evidence>,
         url: Option<String>,
     ) -> Self {
         Self {
             source,
             availability,
             detail,
+            evidence,
             url,
         }
     }
@@ -361,6 +413,216 @@ fn interpret_github(status: u16, body: &str) -> Availability {
         404 => Availability::Free,
         _ => Availability::Unknown,
     }
+}
+
+/// Pull a normalized string field out of a JSON object.
+fn text_field(value: &serde_json::Value, key: &str) -> Option<String> {
+    let raw = value.get(key)?.as_str()?;
+    Some(normalize(raw))
+}
+
+/// Collapse control characters and whitespace runs to single spaces.
+fn normalize(raw: &str) -> String {
+    raw.chars()
+        .filter(|c| !c.is_control())
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<&str>>()
+        .join(" ")
+}
+
+/// Evidence from a registry doc: named entry inside an optional container
+/// object (`crate` for crates.io, `info` for `PyPI`, top level otherwise).
+fn registry_evidence(
+    body: &str,
+    container: Option<&str>,
+    name_key: &str,
+    desc_key: &str,
+) -> Option<Evidence> {
+    let doc: serde_json::Value = serde_json::from_str(body).ok()?;
+    let entry = match container {
+        Some(key) => doc.get(key)?,
+        None => &doc,
+    };
+    let title = text_field(entry, name_key)?;
+    if title.is_empty() {
+        return None;
+    }
+    let detail = text_field(entry, desc_key).unwrap_or_default();
+    Some(Evidence::new(title, detail))
+}
+
+/// Evidence from a Repology project listing: package count plus sample repos.
+fn repology_evidence(body: &str) -> Option<Evidence> {
+    let doc: serde_json::Value = serde_json::from_str(body).ok()?;
+    let items = doc.as_array()?;
+    if items.is_empty() {
+        return None;
+    }
+    let title = if items.len() == 1 {
+        "1 package".to_owned()
+    } else {
+        format!("{} packages", items.len())
+    };
+    let detail = items
+        .iter()
+        .take(3)
+        .filter_map(|e| e.get("repo").and_then(serde_json::Value::as_str))
+        .collect::<Vec<&str>>()
+        .join(", ");
+    Some(Evidence::new(title, detail))
+}
+
+/// Evidence from a GitHub repo search: the top hit's `owner/repo`.
+fn github_evidence(body: &str) -> Option<Evidence> {
+    let doc: serde_json::Value = serde_json::from_str(body).ok()?;
+    let top = doc.get("items")?.as_array()?.first()?;
+    let title = text_field(top, "full_name")?;
+    if title.is_empty() {
+        return None;
+    }
+    let detail = text_field(top, "description").unwrap_or_default();
+    Some(Evidence::new(title, detail))
+}
+
+/// ASCII state glyph plus word: `[x] taken`, `[ ] free`, `[?] unknown`.
+fn state_label(availability: Availability) -> &'static str {
+    match availability {
+        Availability::Taken => "[x] taken",
+        Availability::Free => "[ ] free",
+        Availability::Unknown => "[?] unknown",
+    }
+}
+
+/// Bare verdict word: `taken`, `free`, `unknown`.
+fn verdict_word(availability: Availability) -> &'static str {
+    match availability {
+        Availability::Taken => "taken",
+        Availability::Free => "free",
+        Availability::Unknown => "unknown",
+    }
+}
+
+/// Style for a state cell.
+fn state_style(availability: Availability) -> anstyle::Style {
+    let color = match availability {
+        Availability::Taken => anstyle::AnsiColor::Red,
+        Availability::Free => anstyle::AnsiColor::Green,
+        Availability::Unknown => anstyle::AnsiColor::Yellow,
+    };
+    anstyle::Style::new().fg_color(Some(anstyle::Color::Ansi(color)))
+}
+
+/// Wrap `text` in `style` when `mode` allows color.
+fn paint(mode: ColorMode, style: anstyle::Style, text: &str) -> String {
+    match mode {
+        ColorMode::Plain => text.to_owned(),
+        ColorMode::Color => format!("{style}{text}{style:#}"),
+    }
+}
+
+/// Approximate display width in characters (registries use short ASCII text).
+fn width(text: &str) -> usize {
+    text.chars().count()
+}
+
+/// Pad `text` with trailing spaces to `size` characters.
+fn pad(text: &str, size: usize) -> String {
+    let missing = size.saturating_sub(width(text));
+    format!("{text}{}", " ".repeat(missing))
+}
+
+/// Render one evidence cell: `title - detail`, capped at 60 characters.
+fn render_evidence(evidence: Option<&Evidence>) -> String {
+    const MAX: usize = 60;
+    const KEEP: usize = 57;
+    let Some(found) = evidence else {
+        return String::new();
+    };
+    let joined = if found.detail.is_empty() {
+        found.title.clone()
+    } else {
+        format!("{} - {}", found.title, found.detail)
+    };
+    if width(&joined) <= MAX {
+        joined
+    } else {
+        format!("{}...", joined.chars().take(KEEP).collect::<String>())
+    }
+}
+
+/// Render the full human report: header, ASCII table, verdict line.
+///
+/// Column widths adapt to the content; evidence is capped at 60 characters.
+/// `ColorMode::Plain` emits no escape codes, so piped output stays clean.
+#[must_use]
+pub fn render_table(
+    name: &BinaryName,
+    outcomes: &[Outcome],
+    verdict: Availability,
+    mode: ColorMode,
+) -> String {
+    let bold = anstyle::Style::new().bold();
+    let rows = outcomes
+        .iter()
+        .map(|o| {
+            let detail = render_evidence(o.evidence.as_ref());
+            let detail = if detail.is_empty() && o.availability == Availability::Taken {
+                o.detail.clone()
+            } else {
+                detail
+            };
+            (o.source.id(), o.availability, detail)
+        })
+        .collect::<Vec<(&str, Availability, String)>>();
+    let source_width = rows
+        .iter()
+        .map(|r| width(r.0))
+        .chain([width("source")])
+        .max()
+        .unwrap_or_default();
+    let state_width = rows
+        .iter()
+        .map(|r| width(state_label(r.1)))
+        .chain([width("state")])
+        .max()
+        .unwrap_or_default();
+    let detail_width = rows
+        .iter()
+        .map(|r| width(&r.2))
+        .chain([width("detail")])
+        .max()
+        .unwrap_or_default();
+    let mut lines = vec![format!("Checking '{}':", name.as_str())];
+    lines.push(format!(
+        "{}  {}  detail",
+        paint(mode, bold, &pad("source", source_width)),
+        paint(mode, bold, &pad("state", state_width)),
+    ));
+    lines.push(format!(
+        "{}  {}  {}",
+        "-".repeat(source_width),
+        "-".repeat(state_width),
+        "-".repeat(detail_width)
+    ));
+    for (source, availability, detail) in &rows {
+        let line = format!(
+            "{}  {}  {}",
+            paint(mode, state_style(*availability), &pad(source, source_width)),
+            paint(
+                mode,
+                state_style(*availability),
+                &pad(state_label(*availability), state_width)
+            ),
+            pad(detail, detail_width),
+        );
+        lines.push(line.trim_end().to_owned());
+    }
+    lines.push(format!(
+        "verdict: {}",
+        paint(mode, state_style(verdict).bold(), verdict_word(verdict))
+    ));
+    lines.join("\n")
 }
 
 #[cfg(test)]
@@ -494,14 +756,185 @@ mod tests {
     }
 
     #[test]
+    fn evidence_names_colliding_entries() {
+        let crates_body = r#"{"crate":{"name":"serde","description":"A framework"}}"#;
+        assert_eq!(
+            Source::CratesIo.evidence(200, crates_body),
+            Some(Evidence::new("serde".to_owned(), "A framework".to_owned()))
+        );
+        let npm_body = r#"{"name":"react","description":"UI library"}"#;
+        assert_eq!(
+            Source::Npm.evidence(200, npm_body),
+            Some(Evidence::new("react".to_owned(), "UI library".to_owned()))
+        );
+        let pypi_body = r#"{"info":{"name":"requests","summary":"HTTP for Humans."}}"#;
+        assert_eq!(
+            Source::Pypi.evidence(200, pypi_body),
+            Some(Evidence::new(
+                "requests".to_owned(),
+                "HTTP for Humans.".to_owned()
+            ))
+        );
+        let gems_body = r#"{"name":"rails","info":"Full-stack framework"}"#;
+        assert_eq!(
+            Source::Rubygems.evidence(200, gems_body),
+            Some(Evidence::new(
+                "rails".to_owned(),
+                "Full-stack framework".to_owned()
+            ))
+        );
+        let brew_body = r#"{"name":"wget","desc":"Internet file retriever"}"#;
+        assert_eq!(
+            Source::Homebrew.evidence(200, brew_body),
+            Some(Evidence::new(
+                "wget".to_owned(),
+                "Internet file retriever".to_owned()
+            ))
+        );
+        let repo_body = r#"[{"repo":"debian_12","srcname":"curl"},{"repo":"nix"}]"#;
+        assert_eq!(
+            Source::Repology.evidence(200, repo_body),
+            Some(Evidence::new(
+                "2 packages".to_owned(),
+                "debian_12, nix".to_owned()
+            ))
+        );
+        let hub_body =
+            r#"{"total_count":2,"items":[{"full_name":"a/b","description":"Does things"}]}"#;
+        assert_eq!(
+            Source::Github.evidence(200, hub_body),
+            Some(Evidence::new("a/b".to_owned(), "Does things".to_owned()))
+        );
+    }
+
+    #[test]
+    fn evidence_absent_without_taken_name() {
+        assert_eq!(Source::Npm.evidence(404, ""), None);
+        assert_eq!(Source::Npm.evidence(200, "not-json"), None);
+        assert_eq!(Source::Repology.evidence(200, "[]"), None);
+        assert_eq!(Source::Github.evidence(200, r#"{"total_count":0}"#), None);
+        assert_eq!(Source::LocalPath.evidence(200, ""), None);
+    }
+
+    #[test]
+    fn evidence_tolerates_missing_descriptions() {
+        assert_eq!(
+            Source::Npm.evidence(200, r#"{"name":"x"}"#),
+            Some(Evidence::new("x".to_owned(), String::new()))
+        );
+        assert_eq!(
+            Source::Github.evidence(
+                200,
+                r#"{"total_count":1,"items":[{"full_name":"a/b","description":null}]}"#
+            ),
+            Some(Evidence::new("a/b".to_owned(), String::new()))
+        );
+    }
+
+    #[test]
+    fn plain_table_has_no_escape_codes() {
+        let name = BinaryName::parse("rg").unwrap();
+        let outcomes = vec![
+            Outcome::new(
+                Source::LocalPath,
+                Availability::Taken,
+                "found at /usr/bin/rg".to_owned(),
+                None,
+                None,
+            ),
+            Outcome::new(
+                Source::Npm,
+                Availability::Free,
+                "HTTP 404".to_owned(),
+                None,
+                Some("https://registry.npmjs.org/rg/latest".to_owned()),
+            ),
+        ];
+        let table = render_table(&name, &outcomes, Availability::Taken, ColorMode::Plain);
+        assert!(table.contains("Checking 'rg':"));
+        assert!(table.contains("local-path"));
+        assert!(table.contains("[x] taken"));
+        assert!(table.contains("[ ] free"));
+        assert!(table.contains("found at /usr/bin/rg"));
+        assert!(table.contains("verdict: taken"));
+        assert!(!table.contains('\x1b'));
+        for line in table.lines() {
+            assert!(line.is_ascii(), "{line} should be ASCII-only");
+            assert!(
+                line.chars().next_back().is_none_or(|c| !c.is_whitespace()),
+                "{line:?} should not trail whitespace"
+            );
+        }
+    }
+
+    #[test]
+    fn color_table_marks_states() {
+        let name = BinaryName::parse("rg").unwrap();
+        let outcomes = vec![
+            Outcome::new(
+                Source::Npm,
+                Availability::Taken,
+                "HTTP 200".to_owned(),
+                Some(Evidence::new("rg".to_owned(), "Grep".to_owned())),
+                None,
+            ),
+            Outcome::new(
+                Source::Pypi,
+                Availability::Free,
+                "HTTP 404".to_owned(),
+                None,
+                None,
+            ),
+        ];
+        let table = render_table(&name, &outcomes, Availability::Taken, ColorMode::Color);
+        assert!(table.contains('\x1b'));
+        assert!(table.contains("rg - Grep"));
+        assert!(table.contains("[31m"), "taken rows should be red");
+        assert!(table.contains("[32m"), "free rows should be green");
+    }
+
+    #[test]
+    fn long_evidence_is_capped() {
+        let name = BinaryName::parse("rg").unwrap();
+        let long = "w".repeat(100);
+        let outcomes = vec![Outcome::new(
+            Source::Npm,
+            Availability::Taken,
+            String::new(),
+            Some(Evidence::new("rg".to_owned(), long)),
+            None,
+        )];
+        let table = render_table(&name, &outcomes, Availability::Taken, ColorMode::Plain);
+        let row = table
+            .lines()
+            .find(|l| l.contains("local") || l.contains("npm"));
+        let row = row.unwrap();
+        assert!(row.ends_with("..."));
+        assert!(row.is_ascii());
+    }
+
+    #[test]
     fn summarize_prefers_taken_then_unknown() {
         let url: Option<String> = None;
-        let taken = Outcome::new(Source::Npm, Availability::Taken, String::new(), url.clone());
-        let free = Outcome::new(Source::Pypi, Availability::Free, String::new(), url.clone());
+        let taken = Outcome::new(
+            Source::Npm,
+            Availability::Taken,
+            String::new(),
+            None,
+            url.clone(),
+        );
+        let free = Outcome::new(
+            Source::Pypi,
+            Availability::Free,
+            String::new(),
+            None,
+            url.clone(),
+        );
         let unknown = Outcome::new(
             Source::Github,
             Availability::Unknown,
             String::new(),
+            None,
             url.clone(),
         );
         assert_eq!(

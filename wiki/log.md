@@ -75,7 +75,12 @@ Tip: `grep "^## \[" wiki/log.md | tail -5` shows the last 5 events.
 - Filed `wiki/research/package-sources.md` (included vs deferred + rule);
   deferred: Go proxy, GitLab/Codeberg, Snap, per-distro file lists.
 - `cargo mutants -p bin-name-core`: 5 missed → strengthened tests (length
-  boundary, `Source::id` stability, GitHub 404) → 26 caught, 6 unviable,
-  0 missed (11 unit tests).
+  boundary, `Source::id` stability, GitHub 404), then 1 missed (`state_style`)
+  → asserted per-state color codes → 56 caught, 10 unviable, 0 missed
+  (17 unit tests).
+- Output cleanup: ASCII table (`[x]`/`[ ]`/`[?]` + words, tty-only color via
+  `anstyle`, 60-char evidence cap); per-source `Evidence` (package/repo name
+  + description) in table and `--json`; npm moved to `/latest` doc;
+  `README.md` sample output. 17 unit tests; eval still 8/8.
 - Full gate green: `fmt-check`, `lint`, `t`, `test --doc`, `doc-check`,
   `deny check`, `typos`.
