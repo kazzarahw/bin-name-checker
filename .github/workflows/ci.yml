@@ -58,7 +58,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # v6.0.0
-      - uses: crate-ci/typos@13d4ad9e5ad5db0958564fe6fb02b9b0f5ddb1aa # master
+      - uses: crate-ci/typos@7f9d0819ca1c008ade73f4b41fa9d258d48f605b # master
 
   ci-success:
     if: always()
